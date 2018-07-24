@@ -4,6 +4,7 @@ extern crate opengl_graphics;
 extern crate glutin_window;
 extern crate timer;
 extern crate chrono;
+extern crate image;
 
 use piston::window::{Window, WindowSettings};
 use opengl_graphics::{GlGraphics, OpenGL, Texture, TextureSettings};
@@ -33,11 +34,20 @@ fn main() {
 
     let path    = Path::new("/home/remy/Pictures/background/tumblr_p5oizcKURY1uby4koo1_400.jpg");
     let image   = Image::new().rect([0.0, 0.0, 378.0, 396.0]);
-    let texture = Texture::from_path(path, &TextureSettings::new()).unwrap();
+    let mut rgba_image = image::open(path).ok().unwrap().to_rgba();
+    for (x, y, pixel) in rgba_image.enumerate_pixels_mut() {
+        let mut value = 1.0;
+        value *= ((x as f32) / 378.0).sin();
+        value *= ((y as f32) / 396.0).sin();
+        let luminance = (value * 255.0) as u8;
+        pixel.data = [luminance, luminance, luminance, 255];
+    }
+    let texture = Texture::from_image(&rgba_image, &TextureSettings::new());
 
+    
     let timer = Timer::new();
     let (tx, rx) = sync_channel(1);
-    let guard = timer.schedule_with_delay(chrono::Duration::seconds(1),
+    let guard = timer.schedule_with_delay(chrono::Duration::milliseconds(1000),
                                           move || { tx.send(()).unwrap(); });
     guard.ignore();
     

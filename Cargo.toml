@@ -11,6 +11,7 @@ piston2d-opengl_graphics = "*"
 arrayfire = "3.5.*"
 timer = "0.2.*"
 chrono = "0.4.*"
+image = "0.19.*"
 
 [lib]
 name = "chemsim"
