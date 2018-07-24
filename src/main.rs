@@ -32,8 +32,8 @@ fn main() {
         .expect("Failed to make window");
     let mut gl = GlGraphics::new(opengl);
 
-    let path    = Path::new("/home/remy/Pictures/background/tumblr_p5oizcKURY1uby4koo1_400.jpg");
-    let image   = Image::new().rect([0.0, 0.0, 378.0, 396.0]);
+    let path  = Path::new("/home/remy/Pictures/background/tumblr_p5oizcKURY1uby4koo1_400.jpg");
+    let image = Image::new().rect([0.0, 0.0, 378.0, 396.0]);
     let mut rgba_image = image::open(path).ok().unwrap().to_rgba();
     for (x, y, pixel) in rgba_image.enumerate_pixels_mut() {
         let mut value = 1.0;
@@ -44,17 +44,17 @@ fn main() {
     }
     let texture = Texture::from_image(&rgba_image, &TextureSettings::new());
 
-    
+
     let timer = Timer::new();
     let (tx, rx) = sync_channel(1);
     let guard = timer.schedule_with_delay(chrono::Duration::milliseconds(1000),
                                           move || { tx.send(()).unwrap(); });
     guard.ignore();
-    
+
     let mut events = Events::new(EventSettings::new());
     while let Some(e) = events.next(&mut window) {
         if let Ok(()) = rx.recv_timeout(Duration::from_millis(10)) {
-            window.set_should_close(true);            
+            window.set_should_close(true);
         }
         if let Some(r) = e.render_args() {
             gl.draw(r.viewport(), |c, gl| {
