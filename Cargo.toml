@@ -1,0 +1,6 @@
+[package]
+name = "chemsim"
+version = "0.1.0"
+authors = ["Remy Goldschmidt <taktoa@gmail.com>"]
+
+[dependencies]
