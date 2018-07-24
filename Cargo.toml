@@ -4,7 +4,13 @@ version = "0.1.0"
 authors = ["Remy Goldschmidt <taktoa@gmail.com>"]
 
 [dependencies]
-piston_window = "0.80.*"
+piston = "*"
+pistoncore-glutin_window = "*"
+piston2d-graphics = "*"
+piston2d-opengl_graphics = "*"
+arrayfire = "3.5.*"
+timer = "0.2.*"
+chrono = "0.4.*"
 
 [lib]
 name = "chemsim"
