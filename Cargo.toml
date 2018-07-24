@@ -4,3 +4,25 @@ version = "0.1.0"
 authors = ["Remy Goldschmidt <taktoa@gmail.com>"]
 
 [dependencies]
+arrayfire         = "3.5.*"
+gfx               = "0.17.*"
+gfx_device_gl     = "0.15.*"
+gfx_window_glutin = "0.25.*"
+glutin            = "*"
+
+[lib]
+name = "chemsim"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bin"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+debug = false
+rpath = false
+lto = true
+debug-assertions = false
+codegen-units = 1
+panic = "abort"

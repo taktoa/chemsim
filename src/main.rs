@@ -1,3 +1,5 @@
+extern crate chemsim;
+
 fn main() {
-    println!("Hello, world!");
+    chemsim::main();
 }
