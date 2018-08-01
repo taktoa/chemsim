@@ -12,6 +12,7 @@ arrayfire = "3.5.*"
 timer = "0.2.*"
 chrono = "0.4.*"
 image = "0.19.*"
+num-complex = "*"
 
 [lib]
 name = "chemsim"

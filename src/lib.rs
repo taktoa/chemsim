@@ -8,6 +8,8 @@ extern crate glutin_window;
 extern crate timer;
 extern crate chrono;
 extern crate image;
+extern crate arrayfire;
+extern crate num_complex;
 
 use piston::window::{Window, WindowSettings};
 use opengl_graphics::{GlGraphics, OpenGL, Texture, TextureSettings};
@@ -20,6 +22,9 @@ use piston::event_loop::*;
 use timer::Timer;
 use std::sync::mpsc::sync_channel;
 use std::time::Duration;
+
+pub mod matrix;
+pub mod lbm;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy, Hash)]
 pub struct PixelPos(pub u32, pub u32);
@@ -110,7 +115,7 @@ pub trait Simulation {
     ) where D: Drawable;
 }
 
-pub fn main() {
+pub fn main() {    
     let opengl = OpenGL::V3_2;
     let window_settings
         = WindowSettings::new("Example", [600, 400])
