@@ -1,7 +1,13 @@
+// -----------------------------------------------------------------------------
+
 use std;
 use super::matrix;
 
+// -----------------------------------------------------------------------------
+
 pub type Scalar = f32;
+
+// -----------------------------------------------------------------------------
 
 #[derive(PartialEq, PartialOrd, Debug, Clone, Copy)]
 pub struct Vector(Scalar, Scalar);
@@ -20,22 +26,44 @@ impl std::ops::Add for Vector {
     }
 }
 
+// -----------------------------------------------------------------------------
+
 pub type Matrix = matrix::Matrix<Scalar>;
+
+// -----------------------------------------------------------------------------
 
 pub struct Direction {
     w_scalar: Scalar,
     c_vector: Vector,
 }
 
+// -----------------------------------------------------------------------------
+
 pub type Population = Matrix;
+
+// -----------------------------------------------------------------------------
+
+pub type Populations = Vec<(Direction, Population)>;
+
+// -----------------------------------------------------------------------------
+
+pub trait CollisionOperator {
+    fn evaluate(&self, populations: Populations) -> Matrix;
+}
+
+// -----------------------------------------------------------------------------
 
 pub struct Lattice {
     size:        (usize, usize),
-    populations: Vec<(Direction, Population)>,
+    collision:   Box<CollisionOperator>,
+    populations: Populations,
 }
 
 impl Lattice {
-    pub fn new_D2Q9(populations: &[Population; 9]) -> Self {
+    pub fn new_D2Q9(
+        populations: &[Population; 9],
+        collision:   Box<CollisionOperator>,
+    ) -> Self {
         let size = populations[0].get_shape();
         for pop in populations {
             assert_eq!(size, pop.get_shape());
@@ -71,7 +99,11 @@ impl Lattice {
             vec.push((dir, pop.clone()))
         }
 
-        Lattice { size: size, populations: vec }
+        Lattice {
+            size:        size,
+            populations: vec,
+            collision:   collision,
+        }
     }
     
     pub fn density(&self) -> Matrix {
@@ -80,14 +112,18 @@ impl Lattice {
         result
     }
 
-    pub fn velocity(&self) -> Matrix {
-        let density = self.density();
-        let mut c_matrices: Vec<matrix::Matrix<matrix::Complex<Scalar>>>
-            = Vec::with_capacity(self.populations.len());
-        unimplemented!()
-        // for (dir, _) in 
-        // matrix::Matrix::new_filled(self.size)
-    }
+    // pub fn velocity(&self) -> Matrix {
+    //     let inverse_density = self.density();
+    //     let mut c_matrices: Vec<matrix::Matrix<matrix::Complex<Scalar>>>
+    //         = Vec::with_capacity(self.populations.len());
+    //     for (dir, _) in &self.populations {
+    //         let c = dir.c_vector.to_complex();
+    //         c_matrices.push(matrix::Matrix::new_filled(c, self.size));
+    //     }
+    //     assert_eq!(c_matrices.len(), self.populations.len());
+    //     unimplemented!()
+    //     // matrix::Matrix::new_filled(self.size)
+    // }
 }
 
 pub struct State {

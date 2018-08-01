@@ -11,6 +11,7 @@ extern crate image;
 extern crate arrayfire;
 extern crate num_complex;
 
+use arrayfire as af;
 use piston::window::{Window, WindowSettings};
 use opengl_graphics::{GlGraphics, OpenGL, Texture, TextureSettings};
 use graphics::{Image, clear};
@@ -115,7 +116,18 @@ pub trait Simulation {
     ) where D: Drawable;
 }
 
-pub fn main() {    
+pub fn main() {
+    // let signal = af::Array::new(&[0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+    //                             af::Dim4::new(&[8, 1, 1, 1]));
+    // let kernel = af::Array::new(&[0.5, 0.5, 0.5],
+    //                             af::Dim4::new(&[3, 1, 1, 1]));
+    // let convolved = af::convolve1(&signal, &kernel,
+    //                               af::ConvMode::EXPAND,
+    //                               af::ConvDomain::SPATIAL);
+    // af::print(&signal);
+    // af::print(&kernel);
+    // af::print(&convolved);
+    
     let opengl = OpenGL::V3_2;
     let window_settings
         = WindowSettings::new("Example", [600, 400])

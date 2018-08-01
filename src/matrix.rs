@@ -41,6 +41,17 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
         Matrix::new(&vec[..], dims).unwrap()
     }
 
+    pub fn new_diag(diagonal: &[Element], offset: i32) -> Self {
+        let vector = Matrix::new(diagonal, (diagonal.len(), 1)).unwrap();
+        Matrix::unsafe_new(af::diag_create(&vector.array, offset))
+    }
+
+    pub fn new_identity(dims: (usize, usize)) -> Self {
+        let (w, h) = dims;
+        let dim4 = af::Dim4::new(&[w as u64, h as u64, 1, 1]);
+        Matrix::unsafe_new(af::identity::<Element>(dim4))
+    }
+
     pub fn get_width(&self)  -> usize { self.array.dims()[0] as usize }
     pub fn get_height(&self) -> usize { self.array.dims()[1] as usize }
 
@@ -49,7 +60,7 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
         let h = self.get_height();
         (w, h)
     }
-    
+
     pub fn get_array(&self) -> &af::Array { &self.array }
 
     pub fn cast<T: af::HasAfEnum + Copy>(&self) -> Matrix<T> {
@@ -99,10 +110,28 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
         self.transpose().from_row()
     }
 
+    pub fn get_diagonal(&self, offset: i32) -> Vec<Element> {
+        let diag = af::diag_extract(&self.array, offset);
+        Matrix::unsafe_new(diag).from_row().unwrap()
+    }
+
     pub fn multiply(a: &Self, b: &Self) -> Self {
         assert_eq!(a.get_width(), b.get_height());
         Matrix::unsafe_new(af::matmul(&a.array, &b.array,
                                       af::MatProp::NONE, af::MatProp::NONE))
+    }
+
+    pub fn recip(&self) -> Self {
+        // Matrix::unsafe_new(1.0 as f32 / &self.array)
+        unimplemented!()
+    }
+
+    pub fn scale(&self, scalar: f32) -> Self {
+        Matrix::unsafe_new(&self.array * scalar)
+    }
+
+    pub fn scale_in_place(&mut self, scalar: Element) {
+        unimplemented!();
     }
 }
 
