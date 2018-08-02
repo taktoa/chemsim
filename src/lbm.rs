@@ -68,7 +68,7 @@ impl Lattice {
         for pop in populations {
             assert_eq!(size, pop.get_shape());
         }
-        
+
         let ws: Vec<Scalar> = vec![
             16.0 / 36.0,
             4.0  / 36.0,
@@ -105,25 +105,28 @@ impl Lattice {
             collision:   collision,
         }
     }
-    
+
     pub fn density(&self) -> Matrix {
         let mut result = matrix::Matrix::new_filled(0.0, self.size);
         for (_, pop) in &self.populations { result += pop.clone(); }
         result
     }
 
-    // pub fn velocity(&self) -> Matrix {
-    //     let inverse_density = self.density();
-    //     let mut c_matrices: Vec<matrix::Matrix<matrix::Complex<Scalar>>>
-    //         = Vec::with_capacity(self.populations.len());
-    //     for (dir, _) in &self.populations {
-    //         let c = dir.c_vector.to_complex();
-    //         c_matrices.push(matrix::Matrix::new_filled(c, self.size));
-    //     }
-    //     assert_eq!(c_matrices.len(), self.populations.len());
-    //     unimplemented!()
-    //     // matrix::Matrix::new_filled(self.size)
-    // }
+    pub fn velocity(&self) -> Matrix {
+        // let inverse_density = self.density();
+        // let mut c_matrices: Vec<matrix::Matrix<matrix::Complex<Scalar>>>
+        //     = Vec::with_capacity(self.populations.len());
+        // for (dir, _) in &self.populations {
+        //     let c = dir.c_vector.to_complex();
+        //     c_matrices.push(matrix::Matrix::new_filled(c, self.size));
+        // }
+        // assert_eq!(c_matrices.len(), self.populations.len());
+        unimplemented!()
+    }
+
+    pub fn equilibrium(&self) -> Populations {
+        unimplemented!()
+    }
 }
 
 pub struct State {

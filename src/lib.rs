@@ -1,5 +1,7 @@
-#[allow(dead_code)]
-#[allow(unused_imports)]
+#![allow(dead_code)]
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(non_snake_case)]
 
 extern crate piston;
 extern crate graphics;
@@ -25,6 +27,7 @@ use std::sync::mpsc::sync_channel;
 use std::time::Duration;
 
 pub mod matrix;
+
 pub mod lbm;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy, Hash)]
@@ -97,14 +100,14 @@ pub struct SimState<State> {
     state:   State,
 }
 
-//pub enum 
+//pub enum
 
 pub trait Simulation {
     type State;
 
     fn initial(
     ) -> Self::State;
-    
+
     fn step(
         state:   &mut Self::State,
         elapsed: &chrono::Duration,
@@ -127,7 +130,7 @@ pub fn main() {
     // af::print(&signal);
     // af::print(&kernel);
     // af::print(&convolved);
-    
+
     let opengl = OpenGL::V3_2;
     let window_settings
         = WindowSettings::new("Example", [600, 400])
