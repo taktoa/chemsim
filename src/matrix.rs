@@ -3,6 +3,7 @@ use arrayfire as af;
 use std::marker::PhantomData;
 
 pub use num_complex::Complex;
+pub use num_traits::identities::One;
 
 #[derive(Clone)]
 pub struct Matrix<Element> {
@@ -36,8 +37,8 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
 
     pub fn new_filled(value: Element, dims: (usize, usize)) -> Self {
         let (w, h) = dims;
-        let mut vec: Vec<Element> = Vec::with_capacity(w * h);
-        for el in vec.iter_mut() { *el = value; }
+        let mut vec: Vec<Element> = Vec::new();
+        vec.resize(w * h, value);
         Matrix::new(&vec[..], dims).unwrap()
     }
 
@@ -52,6 +53,13 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
         Matrix::unsafe_new(af::identity::<Element>(dim4))
     }
 
+    pub fn new_random(dims: (usize, usize)) -> Self {
+        let r_engine = af::RandomEngine::new(af::DEFAULT_RANDOM_ENGINE, None);
+        let (w, h) = dims;
+        let dim4 = af::Dim4::new(&[w as u64, h as u64, 1, 1]);
+        Matrix::unsafe_new(af::random_normal::<Element>(dim4, r_engine))
+    }
+    
     pub fn get_width(&self)  -> usize { self.array.dims()[0] as usize }
     pub fn get_height(&self) -> usize { self.array.dims()[1] as usize }
 
@@ -84,7 +92,7 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
 
     /// In-place conjugate transpose of a matrix.
     pub fn conjugate_transpose_in_place(&mut self) {
-        af::transpose_inplace(&mut self.array, false);
+        af::transpose_inplace(&mut self.array, true);
     }
 
     pub fn is_empty(&self)  -> bool { self.array.is_empty()  }
@@ -110,6 +118,14 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
         self.transpose().from_row()
     }
 
+    pub fn get_underlying(&self) -> Vec<Element> {
+        let mut vec = Vec::new();
+        let num_elements = self.get_width() * self.get_height();
+        unsafe { vec.resize(num_elements, std::mem::zeroed()); }
+        self.array.host(&mut vec);
+        vec
+    }
+
     pub fn get_diagonal(&self, offset: i32) -> Vec<Element> {
         let diag = af::diag_extract(&self.array, offset);
         Matrix::unsafe_new(diag).from_row().unwrap()
@@ -122,12 +138,22 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
     }
 
     pub fn hadamard(&self, rhs: &Self) -> Self {
-        unimplemented!()
+        assert_eq!(self.get_shape(), rhs.get_shape());
+        Matrix::unsafe_new(af::mul(&self.array, &rhs.array, true))
     }
 
-    pub fn recip(&self) -> Self {
-        // Matrix::unsafe_new(1.0 as f32 / &self.array)
-        unimplemented!()
+    pub fn divide(&self, rhs: &Self) -> Self {
+        assert_eq!(self.get_shape(), rhs.get_shape());
+        Matrix::unsafe_new(af::div(&self.array, &rhs.array, true))
+    }
+
+    pub fn abs(&self) -> Self {
+        Matrix::unsafe_new(af::abs(&self.array))
+    }
+
+    pub fn recip(&self) -> Self where Element: One {
+        use num_traits::identities::one;
+        Matrix::new_filled(one(), self.get_shape()).divide(self)
     }
 
     pub fn scale(&self, scalar: f32) -> Self {
@@ -136,6 +162,15 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
 
     pub fn scale_in_place(&mut self, scalar: Element) {
         unimplemented!();
+    }
+
+    pub fn sum(&self) -> f64 {
+        af::sum_all(&self.array).0
+    }
+
+    pub fn sum_complex(&self) -> Complex<f64> {
+        let (real, imag) = af::sum_all(&self.array);
+        Complex::new(real, imag)
     }
 }
 

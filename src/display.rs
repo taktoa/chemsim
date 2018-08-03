@@ -5,11 +5,11 @@ use graphics::{Image, clear};
 use graphics::rectangle::*;
 use piston::input::Event;
 use std::path::Path;
-use piston::input::RenderEvent;
+use piston::input::{RenderEvent, ButtonEvent};
 use piston::event_loop::*;
 use timer::Timer;
 use std::sync::mpsc::sync_channel;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use image;
 use chrono;
 use glutin_window;
@@ -76,74 +76,64 @@ impl Drawable for image::RgbaImage {
     }
 }
 
-pub struct SimState<State> {
-    window:  &'static Window,
-    display: GlGraphics,
-    buffer:  image::RgbaImage,
-    output:  Texture,
-    state:   State,
-}
-
-//pub enum
-
 pub trait Simulation {
-    type State;
-
-    fn initial(
-    ) -> Self::State;
-
-    fn step(
-        state:   &mut Self::State,
-        elapsed: &chrono::Duration,
-    );
-
-    fn render<D>(
-        state: &Self::State,
-        buf:   &mut D,
-    ) where D: Drawable;
+    fn size(&self) -> (usize, usize);
+    fn handle(&mut self, input: &Event);
+    fn step(&mut self, elapsed: &Duration);
+    fn render<D: Drawable>(&self, buf: &mut D);
 }
 
-pub fn example() {
+pub fn example<S: Simulation>(initial: S) {
+    let (w, h) = initial.size();
+
     let opengl = OpenGL::V3_2;
     let window_settings
-        = WindowSettings::new("Example", [600, 400])
+        = WindowSettings::new("Example", [w as u32, h as u32])
         .srgb(false)
         .vsync(true)
         .opengl(opengl)
-        .fullscreen(true)
+        // .fullscreen(true)
         .exit_on_esc(true);
     let mut window
         = glutin_window::GlutinWindow::new(&window_settings)
         .expect("Failed to make window");
     let mut gl = GlGraphics::new(opengl);
 
-    let path  = Path::new("/home/remy/Pictures/background/tumblr_p5oizcKURY1uby4koo1_400.jpg");
-    let image = Image::new().rect([0.0, 0.0, 378.0, 396.0]);
-    let mut rgba_image = image::open(path).ok().unwrap().to_rgba();
-    for (x, y, pixel) in rgba_image.enumerate_pixels_mut() {
-        let mut value = 1.0;
-        value *= ((x as f32) / 378.0).sin();
-        value *= ((y as f32) / 396.0).sin();
-        let luminance = (value * 255.0) as u8;
-        pixel.data = [luminance, luminance, luminance, 255];
+    let image = Image::new().rect([0.0, 0.0, w as f64, h as f64]);
+    let mut rgba_image: image::RgbaImage
+        = image::ImageBuffer::new(w as u32, h as u32);
+
+    for (_, _, pixel) in rgba_image.enumerate_pixels_mut() {
+        pixel.data = [0, 0, 0, 255];
     }
-    let texture = Texture::from_image(&rgba_image, &TextureSettings::new());
 
-
-    let timer = Timer::new();
-    let (tx, rx) = sync_channel(1);
-    let guard = timer.schedule_with_delay(chrono::Duration::milliseconds(1000),
-                                          move || { tx.send(()).unwrap(); });
-    guard.ignore();
-
+    let mut texture = Texture::from_image(&rgba_image, &TextureSettings::new());
+    let mut state = initial;
+    let mut last_draw = Instant::now();
     let mut events = Events::new(EventSettings::new());
+
     while let Some(e) = events.next(&mut window) {
-        if let Ok(()) = rx.recv_timeout(Duration::from_millis(10)) {
-            window.set_should_close(true);
+        state.handle(&e);
+
+        if let Some(b) = e.button_args() {
+            use input::{Button, ButtonState};
+            use input::keyboard::Key;
+            if let Button::Keyboard(k) = b.button {
+                println!("Key received: {:?}", k);
+                if (k == Key::Q) && (b.state == ButtonState::Release) {
+                    println!("Key Q pressed, quitting!");
+                    window.set_should_close(true);
+                }
+            }
         }
+
         if let Some(r) = e.render_args() {
+            state.step(&last_draw.elapsed());
+            last_draw = Instant::now();
+            state.render(&mut rgba_image);
+            texture.update(&rgba_image);
             gl.draw(r.viewport(), |c, gl| {
-                clear([0.0, 0.0, 0.0, 1.0], gl);
+                // clear([0.0, 0.0, 0.0, 1.0], gl);
                 image.draw(&texture, &Default::default(), c.transform, gl);
             });
         }
