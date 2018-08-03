@@ -121,6 +121,10 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
                                       af::MatProp::NONE, af::MatProp::NONE))
     }
 
+    pub fn hadamard(&self, rhs: &Self) -> Self {
+        unimplemented!()
+    }
+
     pub fn recip(&self) -> Self {
         // Matrix::unsafe_new(1.0 as f32 / &self.array)
         unimplemented!()
