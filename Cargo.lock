@@ -335,6 +335,7 @@ dependencies = [
  "daggy 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "num 0.1.42 (registry+https://github.com/rust-lang/crates.io-index)",
+ "piston2d-graphics 0.26.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pistoncore-input 0.21.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rusttype 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]

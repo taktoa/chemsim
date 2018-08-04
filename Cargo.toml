@@ -35,7 +35,7 @@ gfx_device_gl            = "*"
 gfx_window_sdl           = "*"
 # gfx_window_glfw          = "*"
 gfx_window_glutin        = "*"
-conrod                   = "*"
+conrod                   = { version = "*", features = ["piston"] }
 conrod_derive            = "*"
 ttf-noto-sans            = "*"
 rusttype                 = "*"
@@ -117,5 +117,5 @@ debug = false
 rpath = false
 lto = true
 debug-assertions = false
-codegen-units = 1
+codegen-units = 8
 panic = "abort"

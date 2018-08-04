@@ -5,7 +5,7 @@ use graphics::{Image, clear};
 use graphics::rectangle::*;
 use piston::input::Event;
 use std::path::Path;
-use piston::input::{RenderEvent, ButtonEvent};
+use piston::input::{RenderEvent, ButtonEvent, UpdateEvent};
 use piston::event_loop::*;
 use timer::Timer;
 use std::sync::mpsc::sync_channel;
@@ -13,6 +13,9 @@ use std::time::{Duration, Instant};
 use image;
 use chrono;
 use glutin_window;
+use conrod::{self, widget, Colorable, Positionable, Widget};
+use conrod::backend::piston as conrod_piston;
+use opengl_graphics;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy, Hash)]
 pub struct PixelPos(pub u32, pub u32);
@@ -84,6 +87,7 @@ pub trait Simulation {
 }
 
 pub fn example<S: Simulation>(initial: S) {
+    // conrod_piston::draw::primitives
     let (w, h) = initial.size();
 
     let opengl = OpenGL::V3_2;
@@ -133,8 +137,126 @@ pub fn example<S: Simulation>(initial: S) {
             state.render(&mut rgba_image);
             texture.update(&rgba_image);
             gl.draw(r.viewport(), |c, gl| {
-                // clear([0.0, 0.0, 0.0, 1.0], gl);
+                clear([0.0, 0.0, 0.0, 1.0], gl);
                 image.draw(&texture, &Default::default(), c.transform, gl);
+            });
+        }
+    }
+}
+
+extern crate ttf_noto_sans;
+
+pub fn conrod() {
+    let w: usize = 500;
+    let h: usize = 500;
+
+    // Create the window.
+    let opengl = OpenGL::V3_2;
+    let window_settings
+        = WindowSettings::new("Example", [w as u32, h as u32])
+        .srgb(false)
+        .vsync(true)
+        .opengl(opengl)
+        .exit_on_esc(true);
+    let mut window
+        = glutin_window::GlutinWindow::new(&window_settings)
+        .expect("Failed to make window");
+    let mut gl = GlGraphics::new(opengl);
+
+    let mut ui = conrod::UiBuilder::new([w as f64, h as f64])
+        .theme(super::theme::theme())
+        .build();
+
+    // Add a `Font` to the `Ui`'s `font::Map` from file.
+    use conrod::text::FontCollection;
+    ui.fonts.insert(FontCollection::from_bytes(ttf_noto_sans::REGULAR)
+                    .expect("failed to FontCollection::from_bytes")
+                    .into_font()
+                    .expect("failed to into_font"));
+
+    // Create a texture to use for efficiently caching text on the GPU.
+    let mut text_vertex_data = Vec::new();
+    let (mut glyph_cache, mut text_texture_cache) = {
+        let scale_tolerance:    f32 = 0.1;
+        let position_tolerance: f32 = 0.1;
+        let cache = conrod::text::GlyphCache::new(w as u32, h as u32,
+                                                  scale_tolerance,
+                                                  position_tolerance);
+        let init = vec![128; w * h];
+        let settings = TextureSettings::new();
+        let texture = Texture::from_memory_alpha(&init, w as u32, h as u32, &settings).unwrap();
+        (cache, texture)
+    };
+
+    // Instantiate the generated list of widget identifiers.
+    let ids = super::theme::Ids::new(ui.widget_id_generator());
+
+    // Load the rust logo from file to a Texture.
+    let rust_logo: Texture = {
+        let path = Path::new("/home/remy/Downloads/rust.png");
+        let settings = TextureSettings::new();
+        Texture::from_path(&path, &settings).unwrap()
+    };
+
+    // Create our `conrod::image::Map` which describes each of our widget->image mappings.
+    // In our case we only have one image, however the macro may be used to list multiple.
+    let mut image_map = conrod::image::Map::new();
+    let rust_logo = image_map.insert(rust_logo);
+
+    // A demonstration of some state that we'd like to control with the App.
+    let mut app = super::theme::DemoApp::new(rust_logo);
+
+    let mut events = Events::new(EventSettings::new());
+
+    while let Some(event) = events.next(&mut window) {
+        let size = window.size();
+        let (win_w, win_h) = (size.width  as conrod::Scalar,
+                              size.height as conrod::Scalar);
+        if let Some(e) = conrod_piston::event::convert(event.clone(), win_w, win_h) {
+            ui.handle_event(e);
+        }
+
+        event.update(|_| {
+            let mut ui = ui.set_widgets();
+            super::theme::gui(&mut ui, &ids, &mut app);
+        });
+
+        if let Some(r) = event.render_args() {
+            gl.draw(r.viewport(), |context, graphics| {
+                if let Some(primitives) = ui.draw_if_changed() {
+                    use conrod::text::rt::Rect;
+                    let cache_queued_glyphs
+                        = |graphics: &mut GlGraphics, cache: &mut Texture, rect: Rect<u32>, data: &[u8]| {
+                            text_vertex_data.clear();
+                            text_vertex_data.extend(
+                                data.iter()
+                                    .flat_map(|&b| vec![255, 255, 255, b])
+                            );
+                            opengl_graphics::UpdateTexture::update(
+                                cache, &mut (),
+                                opengl_graphics::Format::Rgba8,
+                                &text_vertex_data[..],
+                                [rect.min.x, rect.min.y],
+                                [rect.width(), rect.height()],
+                            ).expect("failed to update texture")
+                        };
+
+                    // Specify how to get the drawable texture from the image.
+                    // In this case, the image *is* the texture.
+                    fn texture_from_image<T>(img: &T) -> &T { img }
+
+                    // Draw the conrod `render::Primitives`.
+                    conrod::backend::piston::draw::primitives(
+                        primitives,
+                        context,
+                        graphics,
+                        &mut text_texture_cache,
+                        &mut glyph_cache,
+                        &image_map,
+                        cache_queued_glyphs,
+                        texture_from_image,
+                    );
+                }
             });
         }
     }
