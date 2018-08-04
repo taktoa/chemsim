@@ -1,6 +1,7 @@
 // -----------------------------------------------------------------------------
 
 use std;
+use arrayfire;
 use super::matrix;
 
 // -----------------------------------------------------------------------------
@@ -114,15 +115,11 @@ impl CollisionOperator for BGK {
 
 pub struct Lattice {
     size:        (usize, usize),
-    collision:   Box<CollisionOperator>,
     populations: Populations,
 }
 
 impl Lattice {
-    pub fn new_D2Q9(
-        populations: &[Population; 9],
-        collision:   Box<CollisionOperator>,
-    ) -> Self {
+    pub fn new_D2Q9(populations: &[Population; 9]) -> Self {
         let size = populations[0].get_shape();
         for pop in populations { assert_eq!(size, pop.get_shape()); }
 
@@ -204,7 +201,7 @@ impl Lattice {
             vec.push((dir, pop.clone()))
         }
 
-        Lattice { size: size, populations: vec, collision: collision }
+        Lattice { size: size, populations: vec }
     }
 }
 
@@ -214,11 +211,21 @@ pub struct State {
     pub time:           Scalar,
     pub lattice:        Lattice,
     pub discretization: Discretization,
+    pub collision:      Box<CollisionOperator>,
 }
 
 impl State {
-    pub fn initial(lattice: Lattice, disc: Discretization) -> Self {
-        State { time: 0.0, lattice: lattice, discretization: disc }
+    pub fn initial(
+        lattice:        Lattice,
+        discretization: Discretization,
+        collision:      Box<CollisionOperator>,
+    ) -> Self {
+        State {
+            time:           0.0,
+            lattice:        lattice,
+            discretization: discretization,
+            collision:      collision,
+        }
     }
 
     pub fn step(&mut self) {
@@ -245,22 +252,25 @@ impl State {
             let new_f_i = {
                 let f_i = pair.1.get_array();
                 let stencil = transposed.get_array();
-                Matrix::unsafe_new(af::fft_convolve2(&f_i, &stencil,
-                                                     af::ConvMode::DEFAULT))
-                // Matrix::unsafe_new(af::convolve2(&f_i, &stencil,
-                //                                  af::ConvMode::DEFAULT,
-                //                                  af::ConvDomain::SPATIAL))
+                // Matrix::unsafe_new(af::fft_convolve2(&f_i, &stencil,
+                //                                      af::ConvMode::DEFAULT))
+                let arr = af::convolve2(&f_i, &stencil,
+                                        af::ConvMode::DEFAULT,
+                                        af::ConvDomain::AUTO);
+                arrayfire::eval_multiple(vec![&arr]);
+                Matrix::unsafe_new(arr)
             };
             *(&mut pair.1) = new_f_i;
         }
     }
 
     pub fn collide(&mut self) {
-        let omega = self.lattice.collision.evaluate(
+        let omega = self.collision.evaluate(
             &self.lattice.populations,
             &self.equilibrium(),
             &self.discretization,
         );
+        arrayfire::eval_multiple(omega.iter().map(|m| m.get_array()).collect());
         let mut result = Vec::with_capacity(self.lattice.populations.len());
         for (pair, omega_i) in self.lattice.populations.iter().zip(omega) {
             let (dir, f_i) = pair;
