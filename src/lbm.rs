@@ -305,7 +305,7 @@ impl State {
     }
 
     pub fn density(&self) -> Matrix {
-        let mut result = matrix::Matrix::new_filled(0.0, self.lattice.size);
+        let mut result = Matrix::new_filled(0.0, self.lattice.size);
         for (_, pop) in self.populations() { result += pop.clone(); }
         result
     }
@@ -332,6 +332,11 @@ impl State {
         let v_x = inverse_density.hadamard(&md_x);
         let v_y = inverse_density.hadamard(&md_y);
         (v_x, v_y)
+    }
+
+    pub fn speed(&self) -> Matrix {
+        let (v_x, v_y) = self.velocity();
+        (v_x.hadamard(&v_x) + v_y.hadamard(&v_y)).sqrt()
     }
 
     // FIXME: viscous stress tensor is defined as

@@ -59,7 +59,7 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
         let dim4 = af::Dim4::new(&[w as u64, h as u64, 1, 1]);
         Matrix::unsafe_new(af::random_normal::<Element>(dim4, r_engine))
     }
-    
+
     pub fn get_width(&self)  -> usize { self.array.dims()[0] as usize }
     pub fn get_height(&self) -> usize { self.array.dims()[1] as usize }
 
@@ -171,6 +171,10 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
     pub fn sum_complex(&self) -> Complex<f64> {
         let (real, imag) = af::sum_all(&self.array);
         Complex::new(real, imag)
+    }
+
+    pub fn sqrt(&self) -> Self {
+        Matrix::unsafe_new(af::sqrt(&self.array))
     }
 }
 
