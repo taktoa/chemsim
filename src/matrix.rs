@@ -156,7 +156,7 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
         Matrix::new_filled(one(), self.get_shape()).divide(self)
     }
 
-    pub fn scale(&self, scalar: f32) -> Self {
+    pub fn scale(&self, scalar: f64) -> Self {
         Matrix::unsafe_new(&self.array * scalar)
     }
 

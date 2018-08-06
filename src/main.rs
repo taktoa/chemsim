@@ -38,6 +38,18 @@ pub struct LBMSim {
 
 impl LBMSim {
     pub fn draw(&self) -> chemsim::lbm::Matrix {
+        for (_, f_eq_i) in &self.state.equilibrium() {
+            if arrayfire::imin_all(f_eq_i.get_array()).0 < 0.0 {
+                println!("[ERROR] Instability detected!");
+                break;
+            }
+        }
+        for (_, f_i) in self.state.populations() {
+            if arrayfire::imin_all(f_i.get_array()).0 < 0.0 {
+                println!("[ERROR] Instability detected!");
+                break;
+            }
+        }
         self.state.density()
     }
 }
@@ -62,12 +74,13 @@ impl chemsim::display::Simulation for LBMSim {
     fn render<D: chemsim::display::Drawable>(&self, buf: &mut D) {
         let matrix = self.draw();
         assert_eq!(matrix.get_shape(), self.size);
-        let max = f32::max(
-            arrayfire::imax_all(matrix.get_array()).0 as Scalar,
+        let max = f64::max(
+            arrayfire::imax_all(matrix.abs().get_array()).0 as Scalar,
             0.1,
         );
         draw_matrix(buf, &matrix, &(|value: Scalar| -> u8 {
-            (256.0 * Scalar::abs(value / max)) as u8
+            let f = 256.0 * Scalar::abs(value / max);
+            f.min(255.0).max(0.0) as u8
         }));
     }
 }
@@ -75,7 +88,7 @@ impl chemsim::display::Simulation for LBMSim {
 fn initial_state(size: (usize, usize)) -> LBMSim {
     use chemsim::*;
 
-    let collision = lbm::BGK { tau: 2.0 };
+    let collision = lbm::BGK { tau: 1.0 };
 
     let initial_density = {
         // FIXME: proper initialization
@@ -89,9 +102,9 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
         for x in 0 .. w {
             for y in 0 .. h {
                 let mut val = 0.0;
-                val += Scalar::sin(2.0 * (x as Scalar) / (w as Scalar));
-                val += Scalar::sin(2.0 * (y as Scalar) / (h as Scalar));
-                vec[(y * w) + x] = val;
+                val += Scalar::powi((x as Scalar) / (w as Scalar), 2);
+                val += Scalar::powi((y as Scalar) / (h as Scalar), 2);
+                vec[(y * w) + x] = val; // (1000000.0 * val * val) * std::f32::MIN_POSITIVE;
             }
         }
         matrix::Matrix::new(&vec, size).unwrap()
@@ -119,7 +132,7 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
 }
 
 fn main() {
-    chemsim::display::conrod();
-    // arrayfire::init();
-    // chemsim::display::example(initial_state((500, 500)));
+    // chemsim::display::conrod();
+    arrayfire::init();
+    chemsim::display::example(initial_state((500, 500)));
 }

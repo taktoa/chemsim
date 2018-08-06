@@ -6,7 +6,7 @@ use super::matrix;
 
 // -----------------------------------------------------------------------------
 
-pub type Scalar = f32;
+pub type Scalar = f64;
 
 // -----------------------------------------------------------------------------
 
@@ -252,11 +252,11 @@ impl State {
             let new_f_i = {
                 let f_i = pair.1.get_array();
                 let stencil = transposed.get_array();
-                // Matrix::unsafe_new(af::fft_convolve2(&f_i, &stencil,
-                //                                      af::ConvMode::DEFAULT))
+                // let arr = af::fft_convolve2(&f_i, &stencil,
+                //                             af::ConvMode::DEFAULT);
                 let arr = af::convolve2(&f_i, &stencil,
                                         af::ConvMode::DEFAULT,
-                                        af::ConvDomain::AUTO);
+                                        af::ConvDomain::SPATIAL);
                 arrayfire::eval_multiple(vec![&arr]);
                 Matrix::unsafe_new(arr)
             };
