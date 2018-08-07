@@ -380,6 +380,16 @@ impl State {
         }
         f_neq
     }
+
+    pub fn is_unstable(&self) -> bool {
+        for (_, f_eq_i) in &self.equilibrium() {
+            if arrayfire::imin_all(f_eq_i.get_array()).0 < 0.0 { return true; }
+        }
+        for (_, f_i) in self.populations() {
+            if arrayfire::imin_all(f_i.get_array()).0 < 0.0 { return true; }
+        }
+        false
+    }
 }
 
 // -----------------------------------------------------------------------------

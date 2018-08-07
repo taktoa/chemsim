@@ -38,17 +38,8 @@ pub struct LBMSim {
 
 impl LBMSim {
     pub fn draw(&self) -> chemsim::lbm::Matrix {
-        for (_, f_eq_i) in &self.state.equilibrium() {
-            if arrayfire::imin_all(f_eq_i.get_array()).0 < 0.0 {
-                println!("[ERROR] Instability detected!");
-                break;
-            }
-        }
-        for (_, f_i) in self.state.populations() {
-            if arrayfire::imin_all(f_i.get_array()).0 < 0.0 {
-                println!("[ERROR] Instability detected!");
-                break;
-            }
+        if self.state.is_unstable() {
+            println!("[ERROR] Instability detected!");
         }
         self.state.density()
     }
@@ -131,8 +122,21 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
     LBMSim { size: size, state: state }
 }
 
+extern crate gif;
+use std::fs::File;
+
 fn main() {
     // chemsim::display::conrod();
     arrayfire::init();
     chemsim::display::example(initial_state((500, 500)));
+
+    // use gif::SetParameter;
+    // let (w, h) = (500, 500);
+    // let initial = initial_state((w, h));
+    // let color_map = &[0xFF, 0xFF, 0xFF, 0, 0, 0];
+    // let mut image = File::create("output.gif").unwrap();
+    // let mut encoder
+    //     = gif::Encoder::new(&mut image, w as u16, h as u16, color_map).unwrap();
+    // encoder.set(gif::Repeat::Infinite).unwrap();
+    // chemsim::display::record(initial, 350, &mut encoder).unwrap();
 }

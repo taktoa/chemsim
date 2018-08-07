@@ -199,6 +199,7 @@ dependencies = [
  "gfx_macros 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "gfx_window_glutin 0.25.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "gfx_window_sdl 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "gif 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "image 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "nalgebra 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)",

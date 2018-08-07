@@ -87,7 +87,6 @@ pub trait Simulation {
 }
 
 pub fn example<S: Simulation>(initial: S) {
-    // conrod_piston::draw::primitives
     let (w, h) = initial.size();
 
     let opengl = OpenGL::V3_2;
@@ -142,6 +141,38 @@ pub fn example<S: Simulation>(initial: S) {
             });
         }
     }
+}
+
+extern crate gif;
+use std::io::Result;
+use std::io::Write;
+
+pub fn record<S: Simulation, W: Write>(
+    initial: S, steps: usize, encoder: &mut gif::Encoder<W>
+) -> Result<()>
+{
+    let (w, h) = initial.size();
+
+    let mut rgba_image: image::RgbaImage
+        = image::ImageBuffer::new(w as u32, h as u32);
+
+    for (_, _, pixel) in rgba_image.enumerate_pixels_mut() {
+        pixel.data = [0, 0, 0, 255];
+    }
+
+    let mut state = initial;
+    let mut last_draw = Instant::now();
+
+    for _ in 0 .. steps {
+        state.step(&last_draw.elapsed());
+        last_draw = Instant::now();
+        state.render(&mut rgba_image);
+        let frame = gif::Frame::from_rgba(w as u16, h as u16,
+                                          &mut (rgba_image.clone().into_raw()));
+        encoder.write_frame(&frame)?;
+    }
+
+    Ok(())
 }
 
 extern crate ttf_noto_sans;
