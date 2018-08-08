@@ -39,9 +39,9 @@ pub struct LBMSim {
 
 impl LBMSim {
     pub fn draw(&self) -> chemsim::lbm::Matrix {
-        // if self.state.is_unstable() {
-        //     panic!("[ERROR] Instability detected!");
-        // }
+        if self.state.is_unstable() {
+            panic!("[ERROR] Instability detected!");
+        }
         println!("Max speed: {}", self.state.speed().maximum_real());
         // for (i, (_, pop)) in self.state.populations().iter().enumerate() {
         //     let fft = pop.dft(1.0).abs();
@@ -94,6 +94,18 @@ impl chemsim::display::Simulation for LBMSim {
             let f = 256.0 / (1.0 + Scalar::exp(-value));
             f.min(255.0).max(0.0) as u8
         }));
+
+        let (w, h) = self.size;
+        let saved_geometry = self.state.geometry.get_underlying();
+        for x in 0 .. w {
+            for y in 0 .. h {
+                if saved_geometry[(y * w) + x] {
+                    use chemsim::display::{RGB, PixelPos};
+                    buf.set_pixel(PixelPos(x as u32, y as u32),
+                                  RGB(255, 0, 0));
+                }
+            }
+        }
     }
 }
 
@@ -118,13 +130,13 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
                 let mut val = 0.0;
                 val += Scalar::sin(3.14159 * (x as Scalar) / (w as Scalar));
                 val += Scalar::sin(3.14159 * (y as Scalar) / (h as Scalar));
-                vec[(y * w) + x] = 2.0 * val;
+                vec[(y * w) + x] = 4.0 * val;
             }
         }
         let sine = matrix::Matrix::new(&vec, size).unwrap();
 
         matrix::Matrix::new_filled(1.0, size)
-            + matrix::Matrix::new_random(size).scale(0.01).hadamard(&sine)
+            + matrix::Matrix::new_random(size).scale(0.1).hadamard(&sine)
 
         // let mut vec = Vec::new();
         // vec.resize(w * h, 0.0);
@@ -159,24 +171,31 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
     let geometry = {
         let mut vec = Vec::new();
         vec.resize(w * h, false);
-        for x in 0 .. w {
-            for y in 0 .. h {
-                vec[y * w + x]
-                    =  (x ==     0) || (y ==     0)
-                    || (x == w - 1) || (y == h - 1)
+
+        {
+            let mut set = |x: usize, y: usize, val: bool| { vec[y * w + x] = val; };
+
+            for x in 0 .. w {
+                for y in 0 .. h {
+                    set(x, y,
+                        false
+                        || (x ==     0) || (y ==     0)
+                        || (x == w - 1) || (y == h - 1));
+                }
             }
-        }
-        // vec[15 * w + 20] = true;
-        for x in (128 - 50) .. (128 + 50) {
-            for y in (128 - 50) .. (128 + 50) {
-                vec[y * w + x] = true;
+            for x in (128 - 51) .. (128 + 51) {
+                for y in (128 - 50) .. (128 + 50) { set(x, y, true); }
             }
-        }
-        for x in (128 - 49) .. (128 + 49) {
-            for y in (128 - 49) .. (128 + 49) {
-                vec[y * w + x] = false;
+            for x in (128 - 49) .. (128 + 49) {
+                for y in (128 - 49) .. (128 + 49) { set(x, y, false); }
             }
+
+            set(128, 128 - 50, false);
+            set(128, 128 - 51, false);
         }
+
+        let vec = vec;
+
         matrix::Matrix::new(&vec, size).unwrap()
     };
 
