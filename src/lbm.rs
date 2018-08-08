@@ -113,13 +113,21 @@ impl CollisionOperator for BGK {
 
 // -----------------------------------------------------------------------------
 
-pub struct Lattice {
+pub trait Lattice {
+    fn size(&self) -> (usize, usize);
+    fn populations(&self) -> &Populations;
+    fn populations_mut(&mut self) -> &mut Populations;
+}
+
+// -----------------------------------------------------------------------------
+
+pub struct D2Q9 {
     size:        (usize, usize),
     populations: Populations,
 }
 
-impl Lattice {
-    pub fn new_D2Q9(populations: &[Population; 9]) -> Self {
+impl D2Q9 {
+    pub fn new(populations: &[Population; 9]) -> Self {
         let size = populations[0].get_shape();
         for pop in populations { assert_eq!(size, pop.get_shape()); }
 
@@ -201,30 +209,45 @@ impl Lattice {
             vec.push((dir, pop.clone()))
         }
 
-        Lattice { size: size, populations: vec }
+        D2Q9 { size: size, populations: vec }
     }
 }
+
+impl Lattice for D2Q9 {
+    fn size(&self) -> (usize, usize) {
+        self.size.clone()
+    }
+
+    fn populations(&self) -> &Populations {
+        &self.populations
+    }
+
+    fn populations_mut(&mut self) -> &mut Populations {
+        &mut self.populations
+    }
+}
+
 
 // -----------------------------------------------------------------------------
 
 pub struct State {
     pub time:           Scalar,
-    pub lattice:        Lattice,
-    pub discretization: Discretization,
+    pub lattice:        Box<Lattice>,
     pub collision:      Box<CollisionOperator>,
+    pub discretization: Discretization,
 }
 
 impl State {
     pub fn initial(
-        lattice:        Lattice,
+        lattice:        Box<Lattice>,
         discretization: Discretization,
         collision:      Box<CollisionOperator>,
     ) -> Self {
         State {
             time:           0.0,
             lattice:        lattice,
-            discretization: discretization,
             collision:      collision,
+            discretization: discretization,
         }
     }
 
@@ -246,7 +269,7 @@ impl State {
 
     pub fn stream(&mut self) {
         use arrayfire as af;
-        for pair in &mut self.lattice.populations {
+        for pair in self.lattice.populations_mut() {
             let dir = &pair.0;
             let transposed = dir.stencil.transpose();
             let new_f_i = {
@@ -266,22 +289,23 @@ impl State {
 
     pub fn collide(&mut self) {
         let omega = self.collision.evaluate(
-            &self.lattice.populations,
+            self.lattice.populations(),
             &self.equilibrium(),
             &self.discretization,
         );
         arrayfire::eval_multiple(omega.iter().map(|m| m.get_array()).collect());
-        let mut result = Vec::with_capacity(self.lattice.populations.len());
-        for (pair, omega_i) in self.lattice.populations.iter().zip(omega) {
+        let mut result
+            = Vec::with_capacity(self.lattice.populations().len());
+        for (pair, omega_i) in self.lattice.populations().iter().zip(omega) {
             let (dir, f_i) = pair;
             result.push((dir.clone(), f_i + omega_i));
         }
-        self.lattice.populations = result;
+        *(self.lattice.populations_mut()) = result;
     }
 
     #[inline(always)]
     pub fn size(&self) -> (usize, usize) {
-        self.lattice.size
+        self.lattice.size()
     }
 
     #[inline(always)]
@@ -296,7 +320,7 @@ impl State {
 
     #[inline(always)]
     pub fn populations(&self) -> &Populations {
-        &self.lattice.populations
+        self.lattice.populations()
     }
 
     #[inline(always)]
@@ -305,7 +329,7 @@ impl State {
     }
 
     pub fn density(&self) -> Matrix {
-        let mut result = Matrix::new_filled(0.0, self.lattice.size);
+        let mut result = Matrix::new_filled(0.0, self.lattice.size());
         for (_, pop) in self.populations() { result += pop.clone(); }
         result
     }
@@ -317,8 +341,8 @@ impl State {
     }
 
     pub fn momentum_density(&self) -> (Matrix, Matrix) {
-        let mut md_x = Matrix::new_filled(0.0, self.lattice.size);
-        let mut md_y = Matrix::new_filled(0.0, self.lattice.size);
+        let mut md_x = Matrix::new_filled(0.0, self.lattice.size());
+        let mut md_y = Matrix::new_filled(0.0, self.lattice.size());
         for (dir, f_i) in self.populations() {
             md_x = md_x + f_i.scale(dir.c_vector.0);
             md_y = md_y + f_i.scale(dir.c_vector.1);

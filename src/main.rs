@@ -122,21 +122,23 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
 
     let pops = &[
         initial_density.scale(16.0 / 36.0),
-        initial_density.scale(4.0  / 36.0),
-        initial_density.scale(4.0  / 36.0),
-        initial_density.scale(4.0  / 36.0),
-        initial_density.scale(4.0  / 36.0),
-        initial_density.scale(1.0  / 36.0),
-        initial_density.scale(1.0  / 36.0),
-        initial_density.scale(1.0  / 36.0),
-        initial_density.scale(1.0  / 36.0),
+        initial_density.scale( 4.0 / 36.0),
+        initial_density.scale( 4.0 / 36.0),
+        initial_density.scale( 4.0 / 36.0),
+        initial_density.scale( 4.0 / 36.0),
+        initial_density.scale( 1.0 / 36.0),
+        initial_density.scale( 1.0 / 36.0),
+        initial_density.scale( 1.0 / 36.0),
+        initial_density.scale( 1.0 / 36.0),
     ];
 
-    let lattice = lbm::Lattice::new_D2Q9(pops);
+    let lattice = lbm::D2Q9::new(pops);
 
     let disc = lbm::Discretization { delta_x: 1.0, delta_t: 1.0 };
 
-    let state = lbm::State::initial(lattice, disc, Box::new(collision));
+    let state = lbm::State::initial(
+        Box::new(lattice), disc, Box::new(collision)
+    );
 
     LBMSim { size: size, state: state }
 }
