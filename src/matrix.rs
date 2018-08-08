@@ -1,8 +1,10 @@
+extern crate num;
+
 use std;
 use arrayfire as af;
 use std::marker::PhantomData;
 
-pub use num_complex::Complex;
+pub use self::num::Complex;
 pub use num_traits::identities::One;
 
 #[derive(Clone)]
@@ -147,8 +149,16 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
         Matrix::unsafe_new(af::div(&self.array, &rhs.array, true))
     }
 
+    pub fn conj(&self) -> Self {
+        match self.array.get_type() {
+            af::DType::C32 => Matrix::unsafe_new(af::conjg(&self.array)),
+            af::DType::C64 => Matrix::unsafe_new(af::conjg(&self.array)),
+            _              => self.clone(),
+        }
+    }
+
     pub fn abs(&self) -> Self {
-        Matrix::unsafe_new(af::abs(&self.array))
+        self.hadamard(&self.conj()).sqrt()
     }
 
     pub fn recip(&self) -> Self where Element: One {
@@ -158,10 +168,6 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
 
     pub fn scale(&self, scalar: f64) -> Self {
         Matrix::unsafe_new(&self.array * scalar)
-    }
-
-    pub fn scale_in_place(&mut self, scalar: Element) {
-        unimplemented!();
     }
 
     pub fn sum(&self) -> f64 {
@@ -175,6 +181,85 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
 
     pub fn sqrt(&self) -> Self {
         Matrix::unsafe_new(af::sqrt(&self.array))
+    }
+
+    pub fn maximum_complex(&self) -> Complex<f64> {
+        let (re, im) = af::max_all(&self.array);
+        Complex::new(re, im)
+    }
+
+    pub fn maximum_real(&self) -> f64 {
+        self.maximum_complex().re
+    }
+
+    pub fn maximum_imag(&self) -> f64 {
+        self.maximum_complex().im
+    }
+}
+
+// -----------------------------------------------------------------------------
+
+impl Matrix<f32> {
+    pub fn dft(&self, norm_factor: f64) -> Matrix<Complex<f32>> {
+        Matrix::unsafe_new(af::fft2(&self.array,
+                                    norm_factor,
+                                    self.get_width()  as i64,
+                                    self.get_height() as i64))
+    }
+
+    pub fn inverse_dft(&self, norm_factor: f64) -> Matrix<Complex<f32>> {
+        Matrix::unsafe_new(af::ifft2(&self.array,
+                                     norm_factor,
+                                     self.get_width()  as i64,
+                                     self.get_height() as i64))
+    }
+}
+
+impl Matrix<Complex<f32>> {
+    pub fn dft(&self, norm_factor: f64) -> Matrix<Complex<f32>> {
+        Matrix::unsafe_new(af::fft2(&self.array,
+                                    norm_factor,
+                                    self.get_width()  as i64,
+                                    self.get_height() as i64))
+    }
+
+    pub fn inverse_dft(&self, norm_factor: f64) -> Matrix<Complex<f32>> {
+        Matrix::unsafe_new(af::ifft2(&self.array,
+                                     norm_factor,
+                                     self.get_width()  as i64,
+                                     self.get_height() as i64))
+    }
+}
+
+impl Matrix<f64> {
+    pub fn dft(&self, norm_factor: f64) -> Matrix<Complex<f64>> {
+        Matrix::unsafe_new(af::fft2(&self.array,
+                                    norm_factor,
+                                    self.get_width()  as i64,
+                                    self.get_height() as i64))
+    }
+
+    pub fn inverse_dft(&self, norm_factor: f64) -> Matrix<Complex<f64>> {
+        Matrix::unsafe_new(af::ifft2(&self.array,
+                                     norm_factor,
+                                     self.get_width()  as i64,
+                                     self.get_height() as i64))
+    }
+}
+
+impl Matrix<Complex<f64>> {
+    pub fn dft(&self, norm_factor: f64) -> Matrix<Complex<f64>> {
+        Matrix::unsafe_new(af::fft2(&self.array,
+                                    norm_factor,
+                                    self.get_width()  as i64,
+                                    self.get_height() as i64))
+    }
+
+    pub fn inverse_dft(&self, norm_factor: f64) -> Matrix<Complex<f64>> {
+        Matrix::unsafe_new(af::ifft2(&self.array,
+                                     norm_factor,
+                                     self.get_width()  as i64,
+                                     self.get_height() as i64))
     }
 }
 

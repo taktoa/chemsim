@@ -256,7 +256,7 @@ impl State {
                 //                             af::ConvMode::DEFAULT);
                 let arr = af::convolve2(&f_i, &stencil,
                                         af::ConvMode::DEFAULT,
-                                        af::ConvDomain::SPATIAL);
+                                        af::ConvDomain::FREQUENCY);
                 arrayfire::eval_multiple(vec![&arr]);
                 Matrix::unsafe_new(arr)
             };
@@ -385,9 +385,9 @@ impl State {
         for (_, f_eq_i) in &self.equilibrium() {
             if arrayfire::imin_all(f_eq_i.get_array()).0 < 0.0 { return true; }
         }
-        for (_, f_i) in self.populations() {
-            if arrayfire::imin_all(f_i.get_array()).0 < 0.0 { return true; }
-        }
+        // for (_, f_i) in self.populations() {
+        //     if arrayfire::imin_all(f_i.get_array()).0 < 0.0 { return true; }
+        // }
         false
     }
 }
