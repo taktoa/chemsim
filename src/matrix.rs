@@ -73,6 +73,8 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
 
     pub fn get_array(&self) -> &af::Array { &self.array }
 
+    pub fn get_array_mut(&mut self) -> &mut af::Array { &mut self.array }
+
     pub fn cast<T: af::HasAfEnum + Copy>(&self) -> Matrix<T> {
         Matrix::unsafe_new(self.array.cast::<T>())
     }
@@ -194,6 +196,13 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
 
     pub fn maximum_imag(&self) -> f64 {
         self.maximum_complex().im
+    }
+
+    pub fn z_score(&self) -> Matrix<f64> {
+        let avg = af::mean_all(self.get_array()).0;
+        let std = af::stdev_all(self.get_array()).0;
+        (self.cast::<f64>() - Matrix::new_filled(avg, self.get_shape()))
+            .scale(1.0 / std)
     }
 }
 

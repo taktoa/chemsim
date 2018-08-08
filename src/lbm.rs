@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 
 use std;
-use arrayfire;
+use arrayfire as af;
 use super::matrix;
 
 // -----------------------------------------------------------------------------
@@ -27,6 +27,8 @@ impl Vector {
 
 impl std::ops::Add for Vector {
     type Output = Vector;
+
+    #[inline(always)]
     fn add(self, rhs: Vector) -> Vector {
         Vector(self.0 + rhs.0, self.1 + rhs.1)
     }
@@ -38,6 +40,38 @@ pub type Matrix = matrix::Matrix<Scalar>;
 
 // -----------------------------------------------------------------------------
 
+pub fn compute_equilibrium(
+    density:        Matrix,
+    velocity:       (Matrix, Matrix),
+    directions:     &[Direction],
+    discretization: Discretization,
+) -> Populations {
+    let size = density.get_shape();
+    let (vx, vy) = velocity;
+    assert_eq!(size, vx.get_shape());
+    assert_eq!(size, vy.get_shape());
+    let v2 = vx.hadamard(&vx) + vy.hadamard(&vy);
+    let cs = discretization.isothermal_speed_of_sound();
+    let cs2 = cs * cs;
+    let cs4 = cs2 * cs2;
+    let mut result = Vec::with_capacity(directions.len());
+    for dir in directions {
+        let (cx, cy) = dir.c_vector.to_pair();
+        let vc = vx.scale(cx) + vy.scale(cy);
+        let vc2 = vc.hadamard(&vc);
+        let sum: Matrix
+            = Matrix::new_filled(1.0, size)
+            + vc.scale(1.0 / cs2)
+            + vc2.scale(1.0 / (2.0 * cs4))
+            + v2.scale(-1.0 / (2.0 * cs2));
+        let pop = density.scale(dir.w_scalar).hadamard(&sum);
+        result.push((dir.clone(), pop));
+    }
+    result
+}
+
+// -----------------------------------------------------------------------------
+
 #[derive(PartialEq, PartialOrd, Debug, Clone, Copy)]
 pub struct Discretization {
     pub delta_x: Scalar,
@@ -45,6 +79,7 @@ pub struct Discretization {
 }
 
 impl Discretization {
+    #[inline(always)]
     pub fn isothermal_speed_of_sound(&self) -> Scalar {
         self.delta_x / (Scalar::sqrt(3.0) * self.delta_t)
     }
@@ -76,7 +111,10 @@ pub trait CollisionOperator {
         equilibrium:    &Populations,
         discretization: &Discretization,
     ) -> Vec<Matrix>;
+
     fn kinematic_shear_viscosity(&self, disc: &Discretization) -> Scalar;
+
+    #[inline(always)]
     fn kinematic_bulk_viscosity(&self, disc: &Discretization) -> Scalar {
         2.0 * self.kinematic_shear_viscosity(disc) / 3.0
     }
@@ -117,10 +155,12 @@ pub trait Lattice {
     fn size(&self) -> (usize, usize);
     fn populations(&self) -> &Populations;
     fn populations_mut(&mut self) -> &mut Populations;
+    fn swap_populations(&self) -> Populations;
 }
 
 // -----------------------------------------------------------------------------
 
+#[derive(Clone)]
 pub struct D2Q9 {
     size:        (usize, usize),
     populations: Populations,
@@ -225,6 +265,19 @@ impl Lattice for D2Q9 {
     fn populations_mut(&mut self) -> &mut Populations {
         &mut self.populations
     }
+
+    fn swap_populations(&self) -> Populations {
+        let mut new_pops = self.populations.clone();
+        new_pops[1].1 = self.populations[3].1.clone();
+        new_pops[2].1 = self.populations[4].1.clone();
+        new_pops[3].1 = self.populations[1].1.clone();
+        new_pops[4].1 = self.populations[2].1.clone();
+        new_pops[5].1 = self.populations[7].1.clone();
+        new_pops[6].1 = self.populations[8].1.clone();
+        new_pops[7].1 = self.populations[5].1.clone();
+        new_pops[8].1 = self.populations[6].1.clone();
+        new_pops
+    }
 }
 
 
@@ -233,6 +286,7 @@ impl Lattice for D2Q9 {
 pub struct State {
     pub time:           Scalar,
     pub lattice:        Box<Lattice>,
+    pub geometry:       matrix::Matrix<bool>,
     pub collision:      Box<CollisionOperator>,
     pub discretization: Discretization,
 }
@@ -240,12 +294,14 @@ pub struct State {
 impl State {
     pub fn initial(
         lattice:        Box<Lattice>,
-        discretization: Discretization,
+        geometry:       matrix::Matrix<bool>,
         collision:      Box<CollisionOperator>,
+        discretization: Discretization,
     ) -> Self {
         State {
             time:           0.0,
             lattice:        lattice,
+            geometry:       geometry,
             collision:      collision,
             discretization: discretization,
         }
@@ -260,6 +316,12 @@ impl State {
 
         {
             let timer = std::time::Instant::now();
+            self.bounce_back();
+            println!("> Bounce-back took {} ms", timer.elapsed().as_millis());
+        }
+
+        {
+            let timer = std::time::Instant::now();
             self.stream();
             println!("> Streaming took {} ms", timer.elapsed().as_millis());
         }
@@ -268,7 +330,6 @@ impl State {
     }
 
     pub fn stream(&mut self) {
-        use arrayfire as af;
         for pair in self.lattice.populations_mut() {
             let dir = &pair.0;
             let transposed = dir.stencil.transpose();
@@ -280,7 +341,7 @@ impl State {
                 let arr = af::convolve2(&f_i, &stencil,
                                         af::ConvMode::DEFAULT,
                                         af::ConvDomain::FREQUENCY);
-                arrayfire::eval_multiple(vec![&arr]);
+                af::eval_multiple(vec![&arr]);
                 Matrix::unsafe_new(arr)
             };
             *(&mut pair.1) = new_f_i;
@@ -293,7 +354,7 @@ impl State {
             &self.equilibrium(),
             &self.discretization,
         );
-        arrayfire::eval_multiple(omega.iter().map(|m| m.get_array()).collect());
+        af::eval_multiple(omega.iter().map(|m| m.get_array()).collect());
         let mut result
             = Vec::with_capacity(self.lattice.populations().len());
         for (pair, omega_i) in self.lattice.populations().iter().zip(omega) {
@@ -301,6 +362,17 @@ impl State {
             result.push((dir.clone(), f_i + omega_i));
         }
         *(self.lattice.populations_mut()) = result;
+    }
+
+    pub fn bounce_back(&mut self) {
+        let mut sw_pops = self.lattice.swap_populations();
+        for (pair, mut sw_pair) in self.populations().iter().zip(&mut sw_pops) {
+            let (dir, pop, sw_pop) = (pair.0.clone(), &pair.1, &mut sw_pair.1);
+            af::replace(sw_pop.get_array_mut(),
+                        self.geometry.get_array(),
+                        pop.get_array());
+        }
+        *(self.lattice.populations_mut()) = sw_pops;
     }
 
     #[inline(always)]
@@ -370,26 +442,14 @@ impl State {
     //   σyy ≈ ((Δt / 2τ) - 1) · Σᵢ (c_{iy} c_{iy} fᵢ^neq)
 
     pub fn equilibrium(&self) -> Populations {
-        let density = self.density();
-        let (vx, vy) = self.velocity();
-        let v2 = vx.hadamard(&vx) + vy.hadamard(&vy);
-        let cs = self.isothermal_speed_of_sound();
-        let cs2 = cs * cs;
-        let cs4 = cs2 * cs2;
-        let mut result = Vec::with_capacity(self.populations().len());
-        for (dir, _) in self.populations() {
-            let (cx, cy) = dir.c_vector.to_pair();
-            let vc = vx.scale(cx) + vy.scale(cy);
-            let vc2 = vc.hadamard(&vc);
-            let sum: Matrix
-                = Matrix::new_filled(1.0, self.size())
-                + vc.scale(1.0 / cs2)
-                + vc2.scale(1.0 / (2.0 * cs4))
-                + v2.scale(-1.0 / (2.0 * cs2));
-            let pop = self.density().scale(dir.w_scalar).hadamard(&sum);
-            result.push((dir.clone(), pop));
-        }
-        result
+        let directions: Vec<Direction>
+            = self.populations().iter().map(|(dir, _)| dir.clone()).collect();
+        compute_equilibrium(
+            self.density(),
+            self.velocity(),
+            &directions,
+            self.discretization,
+        )
     }
 
     pub fn non_equilibrium(&self) -> Populations {
@@ -406,13 +466,8 @@ impl State {
     }
 
     pub fn is_unstable(&self) -> bool {
-        for (_, f_eq_i) in &self.equilibrium() {
-            if arrayfire::imin_all(f_eq_i.get_array()).0 < 0.0 { return true; }
-        }
-        // for (_, f_i) in self.populations() {
-        //     if arrayfire::imin_all(f_i.get_array()).0 < 0.0 { return true; }
-        // }
-        false
+        let eq0 = &self.equilibrium()[0].1;
+        af::imin_all(eq0.get_array()).0 < 0.0
     }
 }
 

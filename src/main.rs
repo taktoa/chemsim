@@ -39,9 +39,9 @@ pub struct LBMSim {
 
 impl LBMSim {
     pub fn draw(&self) -> chemsim::lbm::Matrix {
-        if self.state.is_unstable() {
-            panic!("[ERROR] Instability detected!");
-        }
+        // if self.state.is_unstable() {
+        //     panic!("[ERROR] Instability detected!");
+        // }
         println!("Max speed: {}", self.state.speed().maximum_real());
         // for (i, (_, pop)) in self.state.populations().iter().enumerate() {
         //     let fft = pop.dft(1.0).abs();
@@ -54,14 +54,12 @@ impl LBMSim {
         //     println!("> > FFT of population {} has {} / {} = {}% zeroes",
         //              i, numerator, denominator, ratio);
         // }
-        self.state.density()
+        self.state.speed()
     }
 }
 
 impl chemsim::display::Simulation for LBMSim {
-    fn size(&self) -> (usize, usize) {
-        self.size
-    }
+    fn size(&self) -> (usize, usize) { self.size }
 
     fn handle(&mut self, input: &piston::input::Event) {
         // FIXME: drawing boundaries etc.
@@ -78,13 +76,22 @@ impl chemsim::display::Simulation for LBMSim {
     fn render<D: chemsim::display::Drawable>(&self, buf: &mut D) {
         let matrix = self.draw();
         assert_eq!(matrix.get_shape(), self.size);
-        // let max = f64::max(
-        //     matrix.abs().maximum_real() as Scalar,
-        //     0.1,
-        // );
-        let max = matrix.abs().maximum_real() as Scalar;
-        draw_matrix(buf, &matrix, &(|value: Scalar| -> u8 {
-            let f = 256.0 * Scalar::abs(value / max);
+
+        let avg = af::mean_all(matrix.get_array()).0;
+        let std = af::stdev_all(matrix.get_array()).0;
+        let z = (matrix - Matrix::new_filled(avg, self.size)).scale(1.0 / std);
+
+        // matrix = {
+        //     let mut temp
+        //         = Matrix::new_filled(0.0, self.size).get_array().clone();
+        //     af::replace(&mut temp,
+        //                 &self.state.geometry.get_array(),
+        //                 matrix.get_array());
+        //     Matrix::unsafe_new(temp)
+        // };
+
+        draw_matrix(buf, &z, &(|value: Scalar| -> u8 {
+            let f = 256.0 / (1.0 + Scalar::exp(-value));
             f.min(255.0).max(0.0) as u8
         }));
     }
@@ -93,7 +100,9 @@ impl chemsim::display::Simulation for LBMSim {
 fn initial_state(size: (usize, usize)) -> LBMSim {
     use chemsim::*;
 
-    let collision = lbm::BGK { tau: 4.0 };
+    let (w, h) = size;
+
+    let collision = lbm::BGK { tau: 0.52 };
 
     let initial_density = {
         // FIXME: proper initialization
@@ -102,22 +111,33 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
         // matrix::Matrix::new_random(size).abs().scale(10.0)
         // matrix::Matrix::new_identity(size)
 
-        // matrix::Matrix::new_filled(1.0, size)
-        //     + matrix::Matrix::new_random(size).scale(0.1)
-
-        let (w, h) = size;
         let mut vec = Vec::new();
         vec.resize(w * h, 0.0);
         for x in 0 .. w {
             for y in 0 .. h {
                 let mut val = 0.0;
-                val += 1.0;
-                val += 0.3 * Scalar::sin(3.0 * (x as Scalar) / (w as Scalar));
-                val += 0.3 * Scalar::sin(3.0 * (y as Scalar) / (h as Scalar));
-                vec[(y * w) + x] = val;
+                val += Scalar::sin(3.14159 * (x as Scalar) / (w as Scalar));
+                val += Scalar::sin(3.14159 * (y as Scalar) / (h as Scalar));
+                vec[(y * w) + x] = 2.0 * val;
             }
         }
-        matrix::Matrix::new(&vec, size).unwrap()
+        let sine = matrix::Matrix::new(&vec, size).unwrap();
+
+        matrix::Matrix::new_filled(1.0, size)
+            + matrix::Matrix::new_random(size).scale(0.01).hadamard(&sine)
+
+        // let mut vec = Vec::new();
+        // vec.resize(w * h, 0.0);
+        // for x in 0 .. w {
+        //     for y in 0 .. h {
+        //         let mut val = 0.0;
+        //         val += 1.0;
+        //         val += 0.3 * Scalar::sin(3.0 * (x as Scalar) / (w as Scalar));
+        //         val += 0.3 * Scalar::sin(3.0 * (y as Scalar) / (h as Scalar));
+        //         vec[(y * w) + x] = val;
+        //     }
+        // }
+        // matrix::Matrix::new(&vec, size).unwrap()
     };
 
     let pops = &[
@@ -136,8 +156,35 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
 
     let disc = lbm::Discretization { delta_x: 1.0, delta_t: 1.0 };
 
+    let geometry = {
+        let mut vec = Vec::new();
+        vec.resize(w * h, false);
+        for x in 0 .. w {
+            for y in 0 .. h {
+                vec[y * w + x]
+                    =  (x ==     0) || (y ==     0)
+                    || (x == w - 1) || (y == h - 1)
+            }
+        }
+        // vec[15 * w + 20] = true;
+        for x in (128 - 50) .. (128 + 50) {
+            for y in (128 - 50) .. (128 + 50) {
+                vec[y * w + x] = true;
+            }
+        }
+        for x in (128 - 49) .. (128 + 49) {
+            for y in (128 - 49) .. (128 + 49) {
+                vec[y * w + x] = false;
+            }
+        }
+        matrix::Matrix::new(&vec, size).unwrap()
+    };
+
     let state = lbm::State::initial(
-        Box::new(lattice), disc, Box::new(collision)
+        Box::new(lattice),
+        geometry,
+        Box::new(collision),
+        disc,
     );
 
     LBMSim { size: size, state: state }
@@ -149,7 +196,7 @@ use std::fs::File;
 fn main() {
     // chemsim::display::conrod();
     af::init();
-    chemsim::display::example(initial_state((300, 300)));
+    chemsim::display::example(initial_state((256, 256)));
 
     // use gif::SetParameter;
     // let (w, h) = (500, 500);
