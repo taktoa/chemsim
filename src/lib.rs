@@ -24,3 +24,4 @@ pub mod matrix;
 pub mod lbm;
 pub mod display;
 pub mod theme;
+pub mod preconditioned;

@@ -39,9 +39,9 @@ pub struct LBMSim {
 
 impl LBMSim {
     pub fn draw(&self) -> chemsim::lbm::Matrix {
-        if self.state.is_unstable() {
-            panic!("[ERROR] Instability detected!");
-        }
+        // if self.state.is_unstable() {
+        //     panic!("[ERROR] Instability detected!");
+        // }
         println!("Max speed: {}", self.state.speed().maximum_real());
         // for (i, (_, pop)) in self.state.populations().iter().enumerate() {
         //     let fft = pop.dft(1.0).abs();
