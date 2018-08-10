@@ -4,6 +4,7 @@
 #![allow(non_snake_case)]
 #![feature(duration_as_u128)]
 #![feature(use_extern_macros)]
+#![feature(const_fn)]
 
 extern crate piston;
 extern crate graphics;
@@ -21,6 +22,7 @@ extern crate input;
 extern crate conrod;
 
 pub mod matrix;
+pub mod convolver;
 pub mod lbm;
 pub mod display;
 pub mod theme;

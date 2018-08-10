@@ -9,14 +9,31 @@ use super::lbm::{Scalar, Vector, Matrix};
 
 // -----------------------------------------------------------------------------
 
-#[derive(Clone)]
-pub struct Validity2D { pub x_valid: bool, pub y_valid: bool }
+// This value is T
+const TRANSFORMATION_MATRIX: [[i8; 9]; 9] = [
+    [ 1,  1,  1,  1,  1,  1,  1,  1,  1],
+    [-4, -1, -1, -1, -1,  2,  2,  2,  2],
+    [ 4, -2, -2, -2, -2,  1,  1,  1,  1],
+    [ 0,  1,  0, -1,  0,  1, -1, -1,  1],
+    [ 0, -2,  0,  2,  0,  1, -1, -1,  1],
+    [ 0,  0,  1,  0, -1,  1,  1, -1, -1],
+    [ 0,  0, -2,  0,  2,  1,  1, -1, -1],
+    [ 0,  1, -1,  1, -1,  0,  0,  0,  0],
+    [ 0,  0,  0,  0,  0,  1, -1,  1, -1],
+];
 
-impl Validity2D {
-    pub fn new(x_valid: bool, y_valid: bool) -> Self {
-        Validity2D { x_valid: x_valid, y_valid: y_valid }
-    }
-}
+// This value is 36 * T^-1
+const INVERSE_TRANSFORMATION_MATRIX: [[i8; 9]; 9] = [
+    [ 4, -4,  4,  0,  0,  0,  0,  0,  0],
+    [ 4, -1, -2,  6, -6,  0,  0,  9,  0],
+    [ 4, -1, -2,  0,  0,  6, -6, -9,  0],
+    [ 4, -1, -2, -6,  6,  0,  0,  9,  0],
+    [ 4, -1, -2,  0,  0, -6,  6, -9,  0],
+    [ 4,  2,  1,  6,  3,  6,  3,  0,  9],
+    [ 4,  2,  1, -6, -3,  6,  3,  0, -9],
+    [ 4,  2,  1, -6, -3, -6, -3,  0,  9],
+    [ 4,  2,  1,  6,  3, -6, -3,  0, -9],
+];
 
 // -----------------------------------------------------------------------------
 
@@ -97,7 +114,7 @@ pub struct State {
     populations:      [Population; 9],
     density:          Option<DensityField>,
     specific_volume:  Option<SpecificVolumeField>,
-    velocity:         (Validity2D, VelocityField),
+    velocity:         Option<VelocityField>,
     momentum_density: Option<MomentumDensityField>,
     force:            Option<ForceField>,
 }
@@ -109,7 +126,7 @@ impl State {
             populations:      &self.populations,
             density:          self.density.as_ref().unwrap(),
             specific_volume:  self.specific_volume.as_ref().unwrap(),
-            velocity:         &self.velocity.1,
+            velocity:         self.velocity.as_ref().unwrap(),
             momentum_density: self.momentum_density.as_ref().unwrap(),
             force:            &self.force,
         }
@@ -141,36 +158,50 @@ impl State {
     fn compute_velocity(&mut self) {
         self.compute_specific_volume();
 
-        {
-            let validity = &mut self.velocity.0;
-            if !validity.x_valid {
-                self.velocity.1.x = (
-                    &self.populations[1]
-                        + &self.populations[5]
-                        + &self.populations[8]
-                        - &self.populations[3]
-                        - &self.populations[6]
-                        - &self.populations[7]
-                ).hadamard(self.specific_volume.as_ref().unwrap());
-                *(&mut validity.x_valid) = true;
-            }
-            if !validity.y_valid {
-                // self.velocity.1.y = ...;
-                *(&mut validity.y_valid) = true;
-            }
-        }
+        if self.velocity.is_none() {
+            af::eval_multiple(vec![
+                &self.populations[1].get_array(),
+                &self.populations[2].get_array(),
+                &self.populations[3].get_array(),
+                &self.populations[4].get_array(),
+                &self.populations[5].get_array(),
+                &self.populations[6].get_array(),
+                &self.populations[7].get_array(),
+                &self.populations[8].get_array(),
+            ]);
 
-        assert!({
-            let valid = self.velocity.0.clone();
-            valid.x_valid && valid.y_valid
-        });
+            let five_minus_seven = &self.populations[5] - &self.populations[7];
+            let six_minus_eight  = &self.populations[6] - &self.populations[8];
+            af::eval_multiple(vec![
+                five_minus_seven.get_array(),
+                six_minus_eight.get_array(),
+            ]);
+
+            let vx = (
+                &five_minus_seven
+                    - &six_minus_eight
+                    + &self.populations[1]
+                    - &self.populations[3]
+            ).hadamard(self.specific_volume.as_ref().unwrap());
+
+            let vy = (
+                &five_minus_seven
+                    + &six_minus_eight
+                    + &self.populations[2]
+                    - &self.populations[4]
+            ).hadamard(self.specific_volume.as_ref().unwrap());
+
+            af::eval_multiple(vec![ vx.get_array(), vy.get_array() ]);
+
+            self.velocity = Some(VectorField { x: vx, y: vy });
+        }
     }
 
     fn compute_momentum_density(&mut self) {
         self.compute_density();
         self.compute_velocity();
         let rho = self.density.as_ref().unwrap();
-        let v   = &self.velocity.1;
+        let v   = self.velocity.as_ref().unwrap();
         if self.momentum_density.is_none() {
             self.momentum_density = Some(v.scale_pointwise(rho));
         }
@@ -191,6 +222,7 @@ impl State {
 
     pub fn view<'a>(&'a mut self) -> StateView<'a> {
         self.compute_density();
+        self.compute_specific_volume();
         self.compute_velocity();
         self.compute_momentum_density();
         self.compute_force();
@@ -198,80 +230,77 @@ impl State {
     }
 
     pub fn time_mut(&mut self) -> &mut Time {
-        self.density = None;
-        self.specific_volume = None;
+        self.density          = None;
+        self.specific_volume  = None;
         self.momentum_density = None;
-        self.force = None;
-        self.velocity.0.x_valid = false;
-        self.velocity.0.y_valid = false;
+        self.force            = None;
+        self.velocity         = None;
         &mut self.time
     }
 
     pub fn population_0_mut(&mut self) -> &mut Population {
-        self.density = None;
+        self.density          = None;
         self.momentum_density = None;
         &mut self.populations[0]
     }
 
     pub fn population_1_mut(&mut self) -> &mut Population {
-        self.density = None;
+        self.density          = None;
         self.momentum_density = None;
-        self.velocity.0.x_valid = false;
+        self.velocity         = None;
         &mut self.populations[1]
     }
 
     pub fn population_2_mut(&mut self) -> &mut Population {
-        self.density = None;
+        self.density          = None;
         self.momentum_density = None;
-        self.velocity.0.y_valid = false;
+        self.velocity         = None;
         &mut self.populations[2]
     }
 
     pub fn population_3_mut(&mut self) -> &mut Population {
-        self.density = None;
+        self.density          = None;
         self.momentum_density = None;
-        self.velocity.0.x_valid = false;
+        self.velocity         = None;
         &mut self.populations[3]
     }
 
     pub fn population_4_mut(&mut self) -> &mut Population {
-        self.density = None;
+        self.density          = None;
         self.momentum_density = None;
-        self.velocity.0.y_valid = false;
+        self.velocity         = None;
         &mut self.populations[4]
     }
 
     pub fn population_5_mut(&mut self) -> &mut Population {
-        self.density = None;
+        self.density          = None;
         self.momentum_density = None;
-        self.velocity.0.x_valid = false;
-        self.velocity.0.y_valid = false;
+        self.velocity         = None;
         &mut self.populations[5]
     }
 
     pub fn population_6_mut(&mut self) -> &mut Population {
-        self.density = None;
+        self.density          = None;
         self.momentum_density = None;
-        self.velocity.0.x_valid = false;
-        self.velocity.0.y_valid = false;
+        self.velocity         = None;
         &mut self.populations[6]
     }
 
     pub fn population_7_mut(&mut self) -> &mut Population {
-        self.density = None;
+        self.density          = None;
         self.momentum_density = None;
-        self.velocity.0.x_valid = false;
-        self.velocity.0.y_valid = false;
+        self.velocity         = None;
         &mut self.populations[7]
     }
 
     pub fn population_8_mut(&mut self) -> &mut Population {
-        self.density = None;
+        self.density          = None;
         self.momentum_density = None;
-        self.velocity.0.x_valid = false;
-        self.velocity.0.y_valid = false;
+        self.velocity         = None;
         &mut self.populations[8]
     }
+
+    // pub fn get_density(&mut self) -> &
 }
 
 
