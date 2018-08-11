@@ -9,6 +9,7 @@ extern crate piston;
 extern crate arrayfire;
 extern crate conrod;
 extern crate gif;
+extern crate image;
 
 use chemsim::display::{Drawable, RGB, PixelPos};
 use chemsim::lbm::{Scalar, Matrix};
@@ -86,7 +87,7 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
 
     let (w, h) = size;
 
-    let collision = lbm::BGK { tau: 5.0 };
+    let collision = lbm::BGK { tau: 15.0 };
 
     let disc = lbm::Discretization { delta_x: 1.0, delta_t: 1.0 };
 
@@ -208,27 +209,49 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
 }
 
 
-fn main() {
+fn main() -> std::io::Result<()> {
     af::init();
     println!("[NOTE] ArrayFire successfully initialized!");
 
-    let gif = true;
-    let (w, h) = (768, 384);
+    let recorder = true;
+    let (w, h) = (720, 480);
 
     // -------------------------------------------------------------------------
 
+    use chemsim::display::Simulation;
+
     let initial = initial_state((w, h));
 
-    if gif {
-        use std::fs::File;
-        use gif::SetParameter;
-        let color_map = &[0xFF, 0xFF, 0xFF, 0, 0, 0];
-        let mut image = File::create("output.gif").unwrap();
-        let mut encoder
-            = gif::Encoder::new(&mut image, w as u16, h as u16, color_map).unwrap();
-        encoder.set(gif::Repeat::Infinite).unwrap();
-        chemsim::display::record(initial, 400, &mut encoder).unwrap();
+    if recorder {
+        let (w, h) = initial.size();
+
+        let mut state = initial;
+        let mut last_draw = std::time::Instant::now();
+
+        let mut render_callback = move || -> image::RgbaImage {
+            let mut rgba_image: image::RgbaImage
+                = image::ImageBuffer::new(w as u32, h as u32);
+
+            // for (_, _, pixel) in rgba_image.enumerate_pixels_mut() {
+            //     pixel.data = [0, 0, 0, 255];
+            // }
+
+            state.step(&last_draw.elapsed());
+            last_draw = std::time::Instant::now();
+            state.render(&mut rgba_image);
+            rgba_image
+        };
+
+        chemsim::record::record(
+            (w, h),
+            std::path::Path::new("output.webm"),
+            &mut render_callback,
+            400,
+            4000,
+        )?;
     } else {
         chemsim::display::example(initial);
     }
+
+    Ok(())
 }

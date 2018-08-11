@@ -17,6 +17,9 @@ extern crate arrayfire;
 extern crate num_complex;
 extern crate num_traits;
 extern crate input;
+extern crate webm;
+extern crate vpx;
+extern crate vpx_sys;
 
 #[macro_use]
 extern crate conrod;
@@ -28,3 +31,4 @@ pub mod display;
 pub mod render;
 pub mod theme;
 pub mod preconditioned;
+pub mod record;

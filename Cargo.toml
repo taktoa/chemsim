@@ -105,6 +105,7 @@ random                   = "*"
 # matrix                   = "*"
 webm                     = "1.0.0"
 vpx                      = "0.3.1"
+libvpx-native-sys        = "*"
 
 [lib]
 name = "chemsim"

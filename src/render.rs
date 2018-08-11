@@ -56,11 +56,8 @@ pub fn render_vector_field<D: Drawable>(field: &(Matrix, Matrix), buf: &mut D) {
         };
 
         let val: matrix::Matrix<f32> = {
-            // mag
-            //     .z_score()
-            //     .cast::<f32>()
-            //     .logistic()
-            mag.clamp(0.0, 1.0).cast::<f32>()
+            mag.z_score().cast::<f32>().logistic()
+            // mag.clamp(0.0, 1.0).scale(1.2247).cast::<f32>()
         };
 
         assert_eq!(size, hue.get_shape());

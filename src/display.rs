@@ -148,7 +148,9 @@ use std::io::Result;
 use std::io::Write;
 
 pub fn record<S: Simulation, W: Write>(
-    initial: S, steps: usize, encoder: &mut gif::Encoder<W>
+    initial: S,
+    steps:   usize,
+    encoder: &mut gif::Encoder<W>
 ) -> Result<()>
 {
     let (w, h) = initial.size();
