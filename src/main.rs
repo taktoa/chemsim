@@ -10,6 +10,7 @@ extern crate arrayfire;
 extern crate conrod;
 extern crate gif;
 extern crate image;
+extern crate ffmpeg;
 
 use chemsim::display::{Drawable, RGB, PixelPos};
 use chemsim::lbm::{Scalar, Matrix};
@@ -211,6 +212,8 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
 
 fn main() -> std::io::Result<()> {
     af::init();
+    ffmpeg::init()?;
+
     println!("[NOTE] ArrayFire successfully initialized!");
 
     let recorder = true;

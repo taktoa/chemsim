@@ -20,6 +20,7 @@ extern crate input;
 extern crate webm;
 extern crate vpx;
 extern crate vpx_sys;
+extern crate ffmpeg;
 
 #[macro_use]
 extern crate conrod;

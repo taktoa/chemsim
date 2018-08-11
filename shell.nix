@@ -18,9 +18,12 @@ pkgs.stdenv.mkDerivation {
     pkgs.clfft
     pkgs.pkgconfig
     pkgs.libvpx
+    pkgs.ffmpeg-full
   ];
 
-  AF_PATH = "${pkgs.arrayfire}";
+  AF_PATH = pkgs.arrayfire;
+
+  LIBCLANG_PATH = "${pkgs.llvmPackages_6.libclang.lib}/lib";
 
   LD_LIBRARY_PATH = pkgs.stdenv.lib.makeLibraryPath [
     pkgs.xlibs.libX11
