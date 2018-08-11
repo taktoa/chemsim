@@ -96,6 +96,10 @@ pub struct Direction {
 
 // -----------------------------------------------------------------------------
 
+pub type Geometry = matrix::Matrix<bool>;
+
+// -----------------------------------------------------------------------------
+
 pub type Population = Matrix;
 
 // -----------------------------------------------------------------------------
@@ -167,10 +171,22 @@ pub struct D2Q9 {
 }
 
 impl D2Q9 {
-    pub fn new(populations: &[Population; 9]) -> Self {
+    pub fn new(populations: &[Population]) -> Self {
+        assert!(populations.len() == 9);
+
         let size = populations[0].get_shape();
         for pop in populations { assert_eq!(size, pop.get_shape()); }
+        let directions = Self::directions();
 
+        let mut vec = Vec::new();
+        for (dir, pop) in directions.iter().zip(populations) {
+            vec.push((dir.clone(), pop.clone()))
+        }
+
+        D2Q9 { size: size, populations: vec }
+    }
+
+    pub fn directions() -> [Direction; 9] {
         let make_m = |vec: &[i8; 9]| -> Matrix {
             let mut temp = Vec::new();
             for x in vec { temp.push(*x as Scalar); }
@@ -239,17 +255,17 @@ impl D2Q9 {
                       0, 0, 0, ]),
         ];
 
-        let mut vec = Vec::new();
-        for (((w, c), m), pop) in ws.iter().zip(cs).zip(ms).zip(populations) {
-            let dir = Direction {
-                w_scalar: w.clone(),
-                c_vector: c.clone(),
-                stencil:  m.clone(),
-            };
-            vec.push((dir, pop.clone()))
-        }
-
-        D2Q9 { size: size, populations: vec }
+        [
+            (Direction { w_scalar: ws[0], c_vector: cs[0], stencil: ms[0].clone() }),
+            (Direction { w_scalar: ws[1], c_vector: cs[1], stencil: ms[1].clone() }),
+            (Direction { w_scalar: ws[2], c_vector: cs[2], stencil: ms[2].clone() }),
+            (Direction { w_scalar: ws[3], c_vector: cs[3], stencil: ms[3].clone() }),
+            (Direction { w_scalar: ws[4], c_vector: cs[4], stencil: ms[4].clone() }),
+            (Direction { w_scalar: ws[5], c_vector: cs[5], stencil: ms[5].clone() }),
+            (Direction { w_scalar: ws[6], c_vector: cs[6], stencil: ms[6].clone() }),
+            (Direction { w_scalar: ws[7], c_vector: cs[7], stencil: ms[7].clone() }),
+            (Direction { w_scalar: ws[8], c_vector: cs[8], stencil: ms[8].clone() }),
+        ]
     }
 }
 
@@ -286,7 +302,7 @@ impl Lattice for D2Q9 {
 pub struct State {
     pub time:           Scalar,
     pub lattice:        Box<Lattice>,
-    pub geometry:       matrix::Matrix<bool>,
+    pub geometry:       Geometry,
     pub collision:      Box<CollisionOperator>,
     pub discretization: Discretization,
 }
@@ -294,7 +310,7 @@ pub struct State {
 impl State {
     pub fn initial(
         lattice:        Box<Lattice>,
-        geometry:       matrix::Matrix<bool>,
+        geometry:       Geometry,
         collision:      Box<CollisionOperator>,
         discretization: Discretization,
     ) -> Self {
@@ -331,17 +347,13 @@ impl State {
 
     pub fn stream(&mut self) {
         for pair in self.lattice.populations_mut() {
-            let dir = &pair.0;
-            let transposed = dir.stencil.transpose();
+            let transposed = pair.0.stencil.transpose();
             let new_f_i = {
                 let f_i = pair.1.get_array();
                 let stencil = transposed.get_array();
-                // let arr = af::fft_convolve2(&f_i, &stencil,
-                //                             af::ConvMode::DEFAULT);
                 let arr = af::convolve2(&f_i, &stencil,
                                         af::ConvMode::DEFAULT,
-                                        af::ConvDomain::FREQUENCY);
-                af::eval_multiple(vec![&arr]);
+                                        af::ConvDomain::AUTO);
                 Matrix::unsafe_new(arr)
             };
             *(&mut pair.1) = new_f_i;
@@ -354,7 +366,7 @@ impl State {
             &self.equilibrium(),
             &self.discretization,
         );
-        af::eval_multiple(omega.iter().map(|m| m.get_array()).collect());
+        // af::eval_multiple(omega.iter().map(|m| m.get_array()).collect());
         let mut result
             = Vec::with_capacity(self.lattice.populations().len());
         for (pair, omega_i) in self.lattice.populations().iter().zip(omega) {

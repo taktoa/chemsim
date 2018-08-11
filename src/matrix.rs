@@ -26,7 +26,8 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
         let (w, h) = dims;
         if slice.len() != w * h { Err(Error::InvalidSliceSize)?; }
         let dim4 = af::Dim4::new(&[w as u64, h as u64, 1, 1]);
-        Ok(Matrix::unsafe_new(af::Array::new(slice, dim4)))
+        let arr = af::transpose(&af::Array::new(slice, dim4), false);
+        Ok(Matrix::unsafe_new(arr))
     }
 
     pub fn unsafe_new(array: af::Array) -> Self {
@@ -51,19 +52,19 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
 
     pub fn new_identity(dims: (usize, usize)) -> Self {
         let (w, h) = dims;
-        let dim4 = af::Dim4::new(&[w as u64, h as u64, 1, 1]);
+        let dim4 = af::Dim4::new(&[h as u64, w as u64, 1, 1]);
         Matrix::unsafe_new(af::identity::<Element>(dim4))
     }
 
     pub fn new_random(dims: (usize, usize)) -> Self {
         let r_engine = af::RandomEngine::new(af::DEFAULT_RANDOM_ENGINE, None);
         let (w, h) = dims;
-        let dim4 = af::Dim4::new(&[w as u64, h as u64, 1, 1]);
+        let dim4 = af::Dim4::new(&[h as u64, w as u64, 1, 1]);
         Matrix::unsafe_new(af::random_normal::<Element>(dim4, r_engine))
     }
 
-    pub fn get_width(&self)  -> usize { self.array.dims()[0] as usize }
-    pub fn get_height(&self) -> usize { self.array.dims()[1] as usize }
+    pub fn get_width(&self)  -> usize { self.array.dims()[1] as usize }
+    pub fn get_height(&self) -> usize { self.array.dims()[0] as usize }
 
     pub fn get_shape(&self) -> (usize, usize) {
         let w = self.get_width();
@@ -126,7 +127,7 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
         let mut vec = Vec::new();
         let num_elements = self.get_width() * self.get_height();
         unsafe { vec.resize(num_elements, std::mem::zeroed()); }
-        self.array.host(&mut vec);
+        self.transpose().array.host(&mut vec);
         vec
     }
 
@@ -168,10 +169,6 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
         Matrix::new_filled(one(), self.get_shape()).divide(self)
     }
 
-    pub fn scale(&self, scalar: f64) -> Self {
-        Matrix::unsafe_new(&self.array * scalar)
-    }
-
     pub fn sum(&self) -> f64 {
         af::sum_all(&self.array).0
     }
@@ -204,6 +201,92 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
         (self.cast::<f64>() - Matrix::new_filled(avg, self.get_shape()))
             .scale(1.0 / std)
     }
+
+    pub fn logistic(&self) -> Self {
+        Matrix::unsafe_new(af::sigmoid(&self.array))
+    }
+}
+
+// -----------------------------------------------------------------------------
+
+impl Matrix<f32> {
+    pub fn shift(&self, shifter: f32) -> Self {
+        Matrix::unsafe_new(&self.array + shifter)
+    }
+
+    pub fn scale(&self, scalar: f32) -> Self {
+        Matrix::unsafe_new(&self.array * scalar)
+    }
+
+    pub fn clamp(&self, min: f32, max: f32) -> Self {
+        Matrix::unsafe_new(af::clamp(&self.array, &min, &max, true))
+    }
+}
+
+impl Matrix<f64> {
+    pub fn shift(&self, shifter: f64) -> Self {
+        Matrix::unsafe_new(&self.array + shifter)
+    }
+
+    pub fn scale(&self, scalar: f64) -> Self {
+        Matrix::unsafe_new(&self.array * scalar)
+    }
+
+    pub fn clamp(&self, min: f64, max: f64) -> Self {
+        Matrix::unsafe_new(af::clamp(&self.array, &min, &max, true))
+    }
+}
+
+impl Matrix<Complex<f32>> {
+    pub fn scale(&self, scalar: Complex<f32>) -> Self {
+        Matrix::unsafe_new(&self.array * scalar)
+    }
+}
+
+impl Matrix<Complex<f64>> {
+    pub fn scale(&self, scalar: Complex<f64>) -> Self {
+        Matrix::unsafe_new(&self.array * scalar)
+    }
+}
+
+// -----------------------------------------------------------------------------
+
+impl Matrix<Complex<f32>> {
+    pub fn real(&self) -> Matrix<f32> {
+        Matrix::unsafe_new(af::real(self.get_array()))
+    }
+
+    pub fn imag(&self) -> Matrix<f32> {
+        Matrix::unsafe_new(af::imag(self.get_array()))
+    }
+
+    pub fn magnitude(&self) -> Matrix<f32> {
+        self.hadamard(&self.conj()).real().sqrt()
+    }
+
+    /// Returned numbers are in `[-π, π]`
+    pub fn phase(&self) -> Matrix<f32> {
+        Matrix::unsafe_new(af::arg(self.get_array()))
+    }
+}
+
+impl Matrix<Complex<f64>> {
+    pub fn real(&self) -> Matrix<f64> {
+        Matrix::unsafe_new(af::real(self.get_array()))
+    }
+
+    pub fn imag(&self) -> Matrix<f64> {
+        Matrix::unsafe_new(af::imag(self.get_array()))
+    }
+
+    pub fn magnitude(&self) -> Matrix<f64> {
+        self.hadamard(&self.conj()).real().sqrt()
+    }
+
+    /// Returned numbers are in `[-π, π]`
+    pub fn phase(&self) -> Matrix<f64> {
+        Matrix::unsafe_new(af::arg(self.get_array()))
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -212,15 +295,15 @@ impl Matrix<f32> {
     pub fn dft(&self, norm_factor: f64) -> Matrix<Complex<f32>> {
         Matrix::unsafe_new(af::fft2(&self.array,
                                     norm_factor,
-                                    self.get_width()  as i64,
-                                    self.get_height() as i64))
+                                    self.get_height() as i64,
+                                    self.get_width()  as i64))
     }
 
     pub fn inverse_dft(&self, norm_factor: f64) -> Matrix<Complex<f32>> {
         Matrix::unsafe_new(af::ifft2(&self.array,
                                      norm_factor,
-                                     self.get_width()  as i64,
-                                     self.get_height() as i64))
+                                     self.get_height() as i64,
+                                     self.get_width()  as i64))
     }
 }
 
@@ -228,15 +311,15 @@ impl Matrix<Complex<f32>> {
     pub fn dft(&self, norm_factor: f64) -> Matrix<Complex<f32>> {
         Matrix::unsafe_new(af::fft2(&self.array,
                                     norm_factor,
-                                    self.get_width()  as i64,
-                                    self.get_height() as i64))
+                                    self.get_height() as i64,
+                                    self.get_width()  as i64))
     }
 
     pub fn inverse_dft(&self, norm_factor: f64) -> Matrix<Complex<f32>> {
         Matrix::unsafe_new(af::ifft2(&self.array,
                                      norm_factor,
-                                     self.get_width()  as i64,
-                                     self.get_height() as i64))
+                                     self.get_height() as i64,
+                                     self.get_width()  as i64))
     }
 }
 
@@ -244,15 +327,15 @@ impl Matrix<f64> {
     pub fn dft(&self, norm_factor: f64) -> Matrix<Complex<f64>> {
         Matrix::unsafe_new(af::fft2(&self.array,
                                     norm_factor,
-                                    self.get_width()  as i64,
-                                    self.get_height() as i64))
+                                    self.get_height() as i64,
+                                    self.get_width()  as i64))
     }
 
     pub fn inverse_dft(&self, norm_factor: f64) -> Matrix<Complex<f64>> {
         Matrix::unsafe_new(af::ifft2(&self.array,
                                      norm_factor,
-                                     self.get_width()  as i64,
-                                     self.get_height() as i64))
+                                     self.get_height() as i64,
+                                     self.get_width()  as i64))
     }
 }
 
@@ -260,15 +343,15 @@ impl Matrix<Complex<f64>> {
     pub fn dft(&self, norm_factor: f64) -> Matrix<Complex<f64>> {
         Matrix::unsafe_new(af::fft2(&self.array,
                                     norm_factor,
-                                    self.get_width()  as i64,
-                                    self.get_height() as i64))
+                                    self.get_height() as i64,
+                                    self.get_width()  as i64))
     }
 
     pub fn inverse_dft(&self, norm_factor: f64) -> Matrix<Complex<f64>> {
         Matrix::unsafe_new(af::ifft2(&self.array,
                                      norm_factor,
-                                     self.get_width()  as i64,
-                                     self.get_height() as i64))
+                                     self.get_height() as i64,
+                                     self.get_width()  as i64))
     }
 }
 

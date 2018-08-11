@@ -16,6 +16,8 @@ pkgs.stdenv.mkDerivation {
     pkgs.SDL2
     pkgs.glfw
     pkgs.clfft
+    pkgs.pkgconfig
+    pkgs.libvpx
   ];
 
   AF_PATH = "${pkgs.arrayfire}";

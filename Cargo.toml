@@ -103,6 +103,8 @@ rusqlite                 = "*"
 assert                   = "*"
 random                   = "*"
 # matrix                   = "*"
+webm                     = "1.0.0"
+vpx                      = "0.3.1"
 
 [lib]
 name = "chemsim"

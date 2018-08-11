@@ -25,5 +25,6 @@ pub mod matrix;
 pub mod convolver;
 pub mod lbm;
 pub mod display;
+pub mod render;
 pub mod theme;
 pub mod preconditioned;
