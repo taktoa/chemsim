@@ -10,7 +10,7 @@ extern crate arrayfire;
 extern crate conrod;
 extern crate gif;
 extern crate image;
-extern crate ffmpeg;
+// extern crate ffmpeg;
 
 use chemsim::display::{Drawable, RGB, PixelPos};
 use chemsim::lbm::{Scalar, Matrix};
@@ -42,24 +42,73 @@ pub fn draw_matrix<T: Copy + HasAfEnum, D: Drawable>(
     }
 }
 
+#[derive(Copy, Clone)]
+pub enum DisplayMode {
+    Density,
+    Speed,
+    Velocity,
+    MomentumDensity,
+}
+
+impl DisplayMode {
+    pub fn next(&self) -> DisplayMode {
+        match *self {
+            DisplayMode::Density         => DisplayMode::Speed,
+            DisplayMode::Speed           => DisplayMode::Velocity,
+            DisplayMode::Velocity        => DisplayMode::MomentumDensity,
+            DisplayMode::MomentumDensity => DisplayMode::Density,
+        }
+    }
+}
+
 pub struct LBMSim {
-    size:  (usize, usize),
-    state: chemsim::lbm::State,
+    speed_factor: usize,
+    display_mode: DisplayMode,
+    size:         (usize, usize),
+    state:        chemsim::lbm::State,
 }
 
 impl chemsim::display::Simulation for LBMSim {
     fn size(&self) -> (usize, usize) { self.size }
 
     fn handle(&mut self, input: &piston::input::Event) {
+        use piston::input::*;
+        use piston::input::keyboard::*;
+
+        if let Some(Button::Keyboard(k)) = input.release_args() {
+            let old_speed_factor = self.speed_factor;
+
+            match k {
+                Key::Minus => { self.speed_factor -= 1; },
+                Key::Plus  => { self.speed_factor += 1; },
+                Key::Space => { self.display_mode = self.display_mode.next(); },
+                _          => {},
+            };
+
+            if self.speed_factor < 1 {
+                self.speed_factor = 1;
+            }
+
+            if self.speed_factor > 100 {
+                self.speed_factor = 100;
+            }
+
+            if old_speed_factor != self.speed_factor {
+                println!("Speed factor is now {}", self.speed_factor);
+            }
+        }
+
         // FIXME: drawing boundaries etc.
     }
 
     fn step(&mut self, elapsed: &std::time::Duration) {
-        let t = std::time::Instant::now();
-        self.state.step();
-        println!("Step {} took {} ms",
-                 self.state.time,
-                 t.elapsed().as_millis());
+        for _ in 0 .. self.speed_factor {
+            let t = std::time::Instant::now();
+            self.state.step();
+            println!("Step {} took {} ms",
+                     self.state.time,
+                     t.elapsed().as_millis());
+        }
     }
 
     fn render<D: chemsim::display::Drawable>(&self, buf: &mut D) {
@@ -78,8 +127,29 @@ impl chemsim::display::Simulation for LBMSim {
         //     println!("> > FFT of population {} has {} / {} = {}% zeroes",
         //              i, numerator, denominator, ratio);
         // }
-        chemsim::render::render_vector_field(&self.state.momentum_density(), buf);
-        chemsim::render::render_geometry(&self.state.geometry, buf);
+
+        use chemsim::render::*;
+
+        match self.display_mode {
+            DisplayMode::Density => {
+                render_scalar_field(&self.state.density(), buf);
+                println!("Render mode: density");
+            },
+            DisplayMode::Speed => {
+                render_scalar_field(&self.state.speed(), buf);
+                println!("Render mode: speed");
+            },
+            DisplayMode::Velocity => {
+                render_vector_field(&self.state.velocity(), buf);
+                println!("Render mode: velocity");
+            },
+            DisplayMode::MomentumDensity => {
+                render_vector_field(&self.state.momentum_density(), buf);
+                println!("Render mode: momentum density");
+            },
+        };
+
+        render_geometry(&self.state.geometry, buf);
     }
 }
 
@@ -88,9 +158,12 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
 
     let (w, h) = size;
 
-    let collision = lbm::BGK { tau: 15.0 };
-
     let disc = lbm::Discretization { delta_x: 1.0, delta_t: 1.0 };
+
+    // let collision = lbm::BGK { tau: 15.0 };
+
+    let viscosity = 200.0;
+    let collision = lbm::TRT::new(0.25, viscosity, &disc);
 
     let initial_velocity = {
         let mut vec_x = Vec::new();
@@ -165,7 +238,7 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
         vec.resize(w * h, false);
 
         {
-            let mut set = |x: usize, y: usize, val: bool| { vec[y * w + x] = val; };
+            let mut set = |x: usize, y: usize, b: bool| { vec[y * w + x] = b; };
 
             for x in 0 .. w {
                 for y in 0 .. h {
@@ -206,18 +279,23 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
         disc,
     );
 
-    LBMSim { size: size, state: state }
+    LBMSim {
+        size:         size,
+        state:        state,
+        speed_factor: 1,
+        display_mode: DisplayMode::Velocity,
+    }
 }
 
 
 fn main() -> std::io::Result<()> {
     af::init();
-    ffmpeg::init()?;
+    // ffmpeg::init()?;
 
     println!("[NOTE] ArrayFire successfully initialized!");
 
-    let recorder = true;
-    let (w, h) = (720, 480);
+    let recorder = false;
+    let (w, h) = (360, 240);
 
     // -------------------------------------------------------------------------
 
@@ -225,36 +303,38 @@ fn main() -> std::io::Result<()> {
 
     let initial = initial_state((w, h));
 
-    if recorder {
-        let (w, h) = initial.size();
+    chemsim::display::example(initial);
 
-        let mut state = initial;
-        let mut last_draw = std::time::Instant::now();
-
-        let mut render_callback = move || -> image::RgbaImage {
-            let mut rgba_image: image::RgbaImage
-                = image::ImageBuffer::new(w as u32, h as u32);
-
-            // for (_, _, pixel) in rgba_image.enumerate_pixels_mut() {
-            //     pixel.data = [0, 0, 0, 255];
-            // }
-
-            state.step(&last_draw.elapsed());
-            last_draw = std::time::Instant::now();
-            state.render(&mut rgba_image);
-            rgba_image
-        };
-
-        chemsim::record::record(
-            (w, h),
-            std::path::Path::new("output.webm"),
-            &mut render_callback,
-            400,
-            4000,
-        )?;
-    } else {
-        chemsim::display::example(initial);
-    }
+    // if recorder {
+    //     let (w, h) = initial.size();
+    //
+    //     let mut state = initial;
+    //     let mut last_draw = std::time::Instant::now();
+    //
+    //     let mut render_callback = move || -> image::RgbaImage {
+    //         let mut rgba_image: image::RgbaImage
+    //             = image::ImageBuffer::new(w as u32, h as u32);
+    //
+    //         // for (_, _, pixel) in rgba_image.enumerate_pixels_mut() {
+    //         //     pixel.data = [0, 0, 0, 255];
+    //         // }
+    //
+    //         state.step(&last_draw.elapsed());
+    //         last_draw = std::time::Instant::now();
+    //         state.render(&mut rgba_image);
+    //         rgba_image
+    //     };
+    //
+    //     chemsim::record::record(
+    //         (w, h),
+    //         std::path::Path::new("output.webm"),
+    //         &mut render_callback,
+    //         400,
+    //         4000,
+    //     )?;
+    // } else {
+    //     chemsim::display::example(initial);
+    // }
 
     Ok(())
 }

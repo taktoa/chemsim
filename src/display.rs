@@ -122,9 +122,9 @@ pub fn example<S: Simulation>(initial: S) {
             use input::{Button, ButtonState};
             use input::keyboard::Key;
             if let Button::Keyboard(k) = b.button {
-                println!("Key received: {:?}", k);
+                // println!("Key received: {:?}", k);
                 if (k == Key::Q) && (b.state == ButtonState::Release) {
-                    println!("Key Q pressed, quitting!");
+                    println!("Quitting!");
                     window.set_should_close(true);
                 }
             }

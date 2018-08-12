@@ -6,7 +6,6 @@
 #![feature(duration_as_u128)]
 #![feature(use_extern_macros)]
 #![feature(const_fn)]
-#![feature(libc)]
 
 extern crate piston;
 extern crate graphics;
@@ -19,11 +18,10 @@ extern crate arrayfire;
 extern crate num_complex;
 extern crate num_traits;
 extern crate input;
-extern crate webm;
-extern crate vpx;
-extern crate vpx_sys;
-extern crate ffmpeg;
-extern crate libc;
+// extern crate webm;
+// extern crate vpx;
+// extern crate vpx_sys;
+// extern crate ffmpeg;
 
 #[macro_use]
 extern crate conrod;
@@ -35,4 +33,4 @@ pub mod display;
 pub mod render;
 pub mod theme;
 pub mod preconditioned;
-pub mod record;
+// pub mod record;

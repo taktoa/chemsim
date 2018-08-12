@@ -6,7 +6,7 @@ use super::matrix;
 
 // -----------------------------------------------------------------------------
 
-pub type Scalar = f64;
+pub type Scalar = f32;
 
 // -----------------------------------------------------------------------------
 
@@ -467,8 +467,8 @@ impl State {
     pub fn step(&mut self) {
         {
             let timer = std::time::Instant::now();
-            self.collide();
-            println!("> Colliding took {} ms", timer.elapsed().as_millis());
+            self.stream();
+            println!("> Streaming took {} ms", timer.elapsed().as_millis());
         }
 
         {
@@ -479,8 +479,8 @@ impl State {
 
         {
             let timer = std::time::Instant::now();
-            self.stream();
-            println!("> Streaming took {} ms", timer.elapsed().as_millis());
+            self.collide();
+            println!("> Colliding took {} ms", timer.elapsed().as_millis());
         }
 
         self.time += self.discretization.delta_t;

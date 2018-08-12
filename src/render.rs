@@ -15,18 +15,22 @@ pub fn render_geometry<D: Drawable>(geometry: &Geometry, buf: &mut D) {
     }
 }
 
+pub fn render_scalar_field<D: Drawable>(field: &Matrix, buf: &mut D) {
+}
+
 pub fn render_vector_field<D: Drawable>(field: &(Matrix, Matrix), buf: &mut D) {
-    let kernel = af::gaussian_kernel(3, 3, 1.0, 1.0);
-    let vx = Matrix::unsafe_new(
-        af::convolve2(field.0.get_array(),
-                      &kernel,
-                      af::ConvMode::DEFAULT,
-                      af::ConvDomain::SPATIAL));
-    let vy = Matrix::unsafe_new(
-        af::convolve2(field.1.get_array(),
-                      &kernel,
-                      af::ConvMode::DEFAULT,
-                      af::ConvDomain::SPATIAL));
+    // let kernel = af::gaussian_kernel(1, 1, 1.0, 1.0);
+    // let vx = Matrix::unsafe_new(
+    //     af::convolve2(field.0.get_array(),
+    //                   &kernel,
+    //                   af::ConvMode::DEFAULT,
+    //                   af::ConvDomain::SPATIAL));
+    // let vy = Matrix::unsafe_new(
+    //     af::convolve2(field.1.get_array(),
+    //                   &kernel,
+    //                   af::ConvMode::DEFAULT,
+    //                   af::ConvDomain::SPATIAL));
+    let (vx, vy) = field;
 
     let size = {
         let dimensions = buf.dimensions();
@@ -35,8 +39,6 @@ pub fn render_vector_field<D: Drawable>(field: &(Matrix, Matrix), buf: &mut D) {
 
     assert_eq!(size, vx.get_shape());
     assert_eq!(size, vy.get_shape());
-
-
 
     let mag = vx.hadamard(&vx) + vy.hadamard(&vy);
     let phase = Matrix::unsafe_new(
