@@ -5,6 +5,7 @@
 #![feature(duration_as_u128)]
 #![feature(use_extern_macros)]
 #![feature(const_fn)]
+#![feature(libc)]
 
 extern crate piston;
 extern crate graphics;
@@ -21,6 +22,7 @@ extern crate webm;
 extern crate vpx;
 extern crate vpx_sys;
 extern crate ffmpeg;
+extern crate libc;
 
 #[macro_use]
 extern crate conrod;

@@ -126,6 +126,50 @@ pub mod transcode {
 
     // -------------------------------------------------------------------------
 
+    pub mod io_context {
+        use libc;
+        use ffmpeg::{self, ffi::AVIOContext};
+        use std::rc::Rc;
+
+        pub struct IOContext {
+            ptr:  *mut AVIOContext,
+            dtor: Rc<Destructor>,
+        }
+
+        impl IOContext {
+            pub fn new(
+                buffer:       &mut[u8],
+                write_flag:   i32,
+                opaque:       *mut libc::c_void,
+                read_packet:  Option<unsafe extern "C" fn(*mut libc::c_void, *mut u8, i32) -> i32>,
+                write_packet: Option<unsafe extern "C" fn(*mut libc::c_void, *mut u8, i32) -> i32>,
+                seek:         Option<unsafe extern "C" fn(*mut libc::c_void, i64, i32) -> i64>,
+            ) -> Self {
+                // unsafe { ffmpeg::ffi::avio_alloc_context(...); }
+                unimplemented!()
+            }
+        }
+
+        struct Destructor {
+            ptr:  *mut ffmpeg::ffi::AVIOContext,
+        }
+
+        impl Destructor {
+            pub unsafe fn new(ptr: *mut AVIOContext) -> Self {
+                Destructor { ptr: ptr }
+            }
+        }
+
+        impl Drop for Destructor {
+            fn drop(&mut self) {
+                unimplemented!()
+            }
+        }
+
+    }
+
+    // -------------------------------------------------------------------------
+
     pub struct Transcoder {
         pts:     usize,
         output:  ffmpeg::format::context::Output,
@@ -141,16 +185,20 @@ pub mod transcode {
             let decoder_id = ffmpeg::codec::id::Id::BMP;
             let encoder_id = ffmpeg::codec::id::Id::BMP;
             use ffmpeg::codec::traits::{Decoder, Encoder};
-            let decoder
-                = ffmpeg::codec::decoder::find(decoder_id).unwrap().decoder().unwrap().video()?;
-            let encoder
-                = ffmpeg::codec::encoder::find(encoder_id).unwrap().encoder().unwrap().video()?;
-            Ok(Transcoder {
-                pts:     0,
-                output:  octx,
-                decoder: decoder,
-                encoder: encoder,
-            })
+            let decoder_codec
+                = ffmpeg::codec::decoder::find(decoder_id).unwrap();
+            let encoder_codec
+                = ffmpeg::codec::encoder::find(encoder_id).unwrap();
+            let output = octx.add_stream(encoder_codec)?;
+            let decoder = output.codec().decoder().video()?;
+            let encoder = output.codec().encoder().video()?;
+            // Ok(Transcoder {
+            //     pts:     0,
+            //     output:  octx,
+            //     decoder: decoder,
+            //     encoder: encoder,
+            // })
+            unimplemented!()
         }
 
         pub fn add_frame(mut self, img: &RgbaImage) -> self::Result<Self> {
