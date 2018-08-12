@@ -2,6 +2,7 @@
 #![allow(unused_imports)]
 #![allow(unused_variables)]
 #![allow(non_snake_case)]
+#![allow(unused_parens)]
 #![feature(duration_as_u128)]
 #![feature(use_extern_macros)]
 #![feature(const_fn)]

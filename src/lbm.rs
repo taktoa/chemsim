@@ -108,58 +108,61 @@ pub type Populations = Vec<(Direction, Population)>;
 
 // -----------------------------------------------------------------------------
 
-pub trait CollisionOperator {
-    fn evaluate(
-        &self,
-        populations:    &Populations,
-        equilibrium:    &Populations,
-        discretization: &Discretization,
-    ) -> Vec<Matrix>;
-
-    fn kinematic_shear_viscosity(&self, disc: &Discretization) -> Scalar;
-
-    #[inline(always)]
-    fn kinematic_bulk_viscosity(&self, disc: &Discretization) -> Scalar {
-        2.0 * self.kinematic_shear_viscosity(disc) / 3.0
-    }
-}
-
-// -----------------------------------------------------------------------------
-
-pub struct BGK {
-    pub tau: Scalar,
-}
-
-impl CollisionOperator for BGK {
-    fn evaluate(
-        &self,
-        populations:    &Populations,
-        equilibrium:    &Populations,
-        discretization: &Discretization,
-    ) -> Vec<Matrix>
-    {
-        let factor = -discretization.delta_t / self.tau;
-        let mut result = Vec::with_capacity(populations.len());
-        for (pair, pair_eq) in populations.iter().zip(equilibrium) {
-            let (f_i, f_eq_i) = (pair.1.clone(), pair_eq.1.clone());
-            result.push((f_i - f_eq_i).scale(factor));
-        }
-        result
-    }
-
-    fn kinematic_shear_viscosity(&self, disc: &Discretization) -> Scalar {
-        let (dx, dt) = (disc.delta_x, disc.delta_t);
-        (dx * dx / (3.0 * dt * dt)) * (self.tau - dt / 2.0)
-    }
-}
-
-// -----------------------------------------------------------------------------
-
 pub trait Lattice {
     fn size(&self) -> (usize, usize);
     fn populations(&self) -> &Populations;
     fn populations_mut(&mut self) -> &mut Populations;
     fn swap_populations(&self) -> Populations;
+
+    fn density(&self) -> Matrix {
+        let mut result = Matrix::new_filled(0.0, self.size());
+        for (_, pop) in self.populations() { result += pop.clone(); }
+        result
+    }
+
+    fn momentum_density(&self) -> (Matrix, Matrix) {
+        let mut md_x = Matrix::new_filled(0.0, self.size());
+        let mut md_y = Matrix::new_filled(0.0, self.size());
+        for (dir, f_i) in self.populations() {
+            md_x = md_x + f_i.scale(dir.c_vector.0);
+            md_y = md_y + f_i.scale(dir.c_vector.1);
+        }
+        (md_x, md_y)
+    }
+
+    fn velocity(&self) -> (Matrix, Matrix) {
+        let inverse_density = self.density().recip();
+        let (md_x, md_y) = self.momentum_density();
+        let v_x = inverse_density.hadamard(&md_x);
+        let v_y = inverse_density.hadamard(&md_y);
+        (v_x, v_y)
+    }
+
+    fn speed(&self) -> Matrix {
+        let (v_x, v_y) = self.velocity();
+        (v_x.hadamard(&v_x) + v_y.hadamard(&v_y)).sqrt()
+    }
+
+    fn equilibrium(&self, disc: &Discretization) -> Populations {
+        let directions: Vec<Direction>
+            = self.populations().iter().map(|(dir, _)| dir.clone()).collect();
+        compute_equilibrium(self.density(), self.velocity(), &directions, *disc)
+    }
+
+    fn non_equilibrium(&self, disc: &Discretization) -> Populations {
+        let f = self.populations();
+        let f_eq = self.equilibrium(disc);
+        let mut f_neq = Vec::with_capacity(f.len());
+        for (pair, pair_eq) in f.iter().zip(f_eq) {
+            let dir = pair.0.clone();
+            let pop = pair.1.clone();
+            let pop_eq = pair_eq.1;
+            f_neq.push((dir, pop - pop_eq));
+        }
+        f_neq
+    }
+
+    fn swap_equilibrium(&self, disc: &Discretization) -> Populations;
 }
 
 // -----------------------------------------------------------------------------
@@ -294,8 +297,146 @@ impl Lattice for D2Q9 {
         new_pops[8].1 = self.populations[6].1.clone();
         new_pops
     }
+
+    fn swap_equilibrium(&self, disc: &Discretization) -> Populations {
+        let mut new_pops = self.equilibrium(disc).clone();
+        new_pops[1].1 = self.populations[3].1.clone();
+        new_pops[2].1 = self.populations[4].1.clone();
+        new_pops[3].1 = self.populations[1].1.clone();
+        new_pops[4].1 = self.populations[2].1.clone();
+        new_pops[5].1 = self.populations[7].1.clone();
+        new_pops[6].1 = self.populations[8].1.clone();
+        new_pops[7].1 = self.populations[5].1.clone();
+        new_pops[8].1 = self.populations[6].1.clone();
+        new_pops
+    }
 }
 
+// -----------------------------------------------------------------------------
+
+pub trait CollisionOperator {
+    fn evaluate(
+        &self,
+        lattice:        &Lattice,
+        equilibrium:    &Populations,
+        discretization: &Discretization,
+    ) -> Vec<Matrix>;
+
+    fn kinematic_shear_viscosity(&self, disc: &Discretization) -> Scalar;
+
+    #[inline(always)]
+    fn kinematic_bulk_viscosity(&self, disc: &Discretization) -> Scalar {
+        2.0 * self.kinematic_shear_viscosity(disc) / 3.0
+    }
+}
+
+// -----------------------------------------------------------------------------
+
+pub struct BGK {
+    pub tau: Scalar,
+}
+
+impl CollisionOperator for BGK {
+    fn evaluate(
+        &self,
+        lattice:        &Lattice,
+        equilibrium:    &Populations,
+        discretization: &Discretization,
+    ) -> Vec<Matrix>
+    {
+        let factor = -discretization.delta_t / self.tau;
+        let mut result = Vec::with_capacity(lattice.populations().len());
+        for (pair, pair_eq) in lattice.populations().iter().zip(equilibrium) {
+            let (f_i, f_eq_i) = (pair.1.clone(), pair_eq.1.clone());
+            result.push((f_i - f_eq_i).scale(factor));
+        }
+        result
+    }
+
+    fn kinematic_shear_viscosity(&self, disc: &Discretization) -> Scalar {
+        let (dx, dt) = (disc.delta_x, disc.delta_t);
+        (dx * dx / (3.0 * dt * dt)) * (self.tau - dt / 2.0)
+    }
+}
+
+// -----------------------------------------------------------------------------
+
+pub struct TRT {
+    pub tau_minus: Scalar,
+    pub tau_plus:  Scalar,
+}
+
+impl TRT {
+    pub fn new(
+        lambda:       Scalar,
+        ks_viscosity: Scalar,
+        disc:         &Discretization,
+    ) -> Self {
+        let (dx, dt) = (disc.delta_x, disc.delta_t);
+        let cs = disc.isothermal_speed_of_sound();
+        let tau_plus  = dt * ((ks_viscosity / (cs * cs)) + 0.5);
+        let tau_minus = dt * ((lambda / ((tau_plus / dt) - 0.5)) + 0.5);
+        TRT { tau_minus: tau_minus, tau_plus: tau_plus }
+    }
+
+    pub fn lambda(&self, disc: &Discretization) -> Scalar {
+        let (dx, dt) = (disc.delta_x, disc.delta_t);
+        let mut result = 1.0;
+        result *= ((self.tau_plus  / dt) - 0.5);
+        result *= ((self.tau_minus / dt) - 0.5);
+        result
+    }
+}
+
+impl CollisionOperator for TRT {
+    fn evaluate(
+        &self,
+        lattice:        &Lattice,
+        equilibrium:    &Populations,
+        discretization: &Discretization,
+    ) -> Vec<Matrix>
+    {
+        let f            = lattice.populations();
+        let f_swapped    = lattice.swap_populations();
+        let f_eq         = lattice.equilibrium(discretization);
+        let f_eq_swapped = lattice.swap_equilibrium(discretization);
+
+        let mut f_pm = Vec::new();
+        for (pair, pair_swapped) in f.iter().zip(f_swapped) {
+            let f_p = (&pair.1 + &pair_swapped.1).scale(0.5);
+            let f_m = (&pair.1 - &pair_swapped.1).scale(0.5);
+            f_pm.push((f_p, f_m));
+        }
+
+        let mut f_eq_pm = Vec::new();
+        for (pair, pair_swapped) in f_eq.iter().zip(f_eq_swapped) {
+            let f_eq_p = (&pair.1 + &pair_swapped.1).scale(0.5);
+            let f_eq_m = (&pair.1 - &pair_swapped.1).scale(0.5);
+            f_eq_pm.push((f_eq_p, f_eq_m));
+        }
+
+        let (dx, dt) = (discretization.delta_x, discretization.delta_t);
+        let omega_m = 1.0 / self.tau_minus;
+        let omega_p = 1.0 / self.tau_plus;
+
+        let mut result = Vec::with_capacity(lattice.populations().len());
+        for (f_pm_i, f_eq_pm_i) in f_pm.iter().zip(f_eq_pm) {
+            let (f_p_i, f_m_i) = f_pm_i;
+            let (f_eq_p_i, f_eq_m_i) = f_eq_pm_i;
+            result.push((
+                (f_p_i - f_eq_p_i).scale(omega_p)
+                    + (f_m_i - f_eq_m_i).scale(omega_m)
+            ).scale(-dt));
+        }
+        result
+    }
+
+    fn kinematic_shear_viscosity(&self, disc: &Discretization) -> Scalar {
+        let (dx, dt) = (disc.delta_x, disc.delta_t);
+        let cs = disc.isothermal_speed_of_sound();
+        cs * cs * (self.tau_plus / dt - 0.5)
+    }
+}
 
 // -----------------------------------------------------------------------------
 
@@ -361,8 +502,9 @@ impl State {
     }
 
     pub fn collide(&mut self) {
+        use std::borrow::Borrow;
         let omega = self.collision.evaluate(
-            self.lattice.populations(),
+            self.lattice.borrow(),
             &self.equilibrium(),
             &self.discretization,
         );
@@ -412,10 +554,9 @@ impl State {
         self.discretization.isothermal_speed_of_sound()
     }
 
+    #[inline(always)]
     pub fn density(&self) -> Matrix {
-        let mut result = Matrix::new_filled(0.0, self.lattice.size());
-        for (_, pop) in self.populations() { result += pop.clone(); }
-        result
+        self.lattice.density()
     }
 
     #[inline(always)]
@@ -424,27 +565,19 @@ impl State {
         self.density().scale(cs * cs)
     }
 
+    #[inline(always)]
     pub fn momentum_density(&self) -> (Matrix, Matrix) {
-        let mut md_x = Matrix::new_filled(0.0, self.lattice.size());
-        let mut md_y = Matrix::new_filled(0.0, self.lattice.size());
-        for (dir, f_i) in self.populations() {
-            md_x = md_x + f_i.scale(dir.c_vector.0);
-            md_y = md_y + f_i.scale(dir.c_vector.1);
-        }
-        (md_x, md_y)
+        self.lattice.momentum_density()
     }
 
+    #[inline(always)]
     pub fn velocity(&self) -> (Matrix, Matrix) {
-        let inverse_density = self.density().recip();
-        let (md_x, md_y) = self.momentum_density();
-        let v_x = inverse_density.hadamard(&md_x);
-        let v_y = inverse_density.hadamard(&md_y);
-        (v_x, v_y)
+        self.lattice.velocity()
     }
 
+    #[inline(always)]
     pub fn speed(&self) -> Matrix {
-        let (v_x, v_y) = self.velocity();
-        (v_x.hadamard(&v_x) + v_y.hadamard(&v_y)).sqrt()
+        self.lattice.speed()
     }
 
     // FIXME: viscous stress tensor is defined as
@@ -453,30 +586,17 @@ impl State {
     //   σyx ≈ ((Δt / 2τ) - 1) · Σᵢ (c_{iy} c_{ix} fᵢ^neq)
     //   σyy ≈ ((Δt / 2τ) - 1) · Σᵢ (c_{iy} c_{iy} fᵢ^neq)
 
+    #[inline(always)]
     pub fn equilibrium(&self) -> Populations {
-        let directions: Vec<Direction>
-            = self.populations().iter().map(|(dir, _)| dir.clone()).collect();
-        compute_equilibrium(
-            self.density(),
-            self.velocity(),
-            &directions,
-            self.discretization,
-        )
+        self.lattice.equilibrium(&self.discretization)
     }
 
+    #[inline(always)]
     pub fn non_equilibrium(&self) -> Populations {
-        let f = self.populations();
-        let f_eq = self.equilibrium();
-        let mut f_neq = Vec::with_capacity(f.len());
-        for (pair, pair_eq) in f.iter().zip(f_eq) {
-            let dir = pair.0.clone();
-            let pop = pair.1.clone();
-            let pop_eq = pair_eq.1;
-            f_neq.push((dir, pop - pop_eq));
-        }
-        f_neq
+        self.lattice.non_equilibrium(&self.discretization)
     }
 
+    #[inline(always)]
     pub fn is_unstable(&self) -> bool {
         let eq0 = &self.equilibrium()[0].1;
         af::imin_all(eq0.get_array()).0 < 0.0
