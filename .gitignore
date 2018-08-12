@@ -1,3 +1,5 @@
 /target
 **/*.rs.bk
 /cp2k
+*.mp4
+*.webm
