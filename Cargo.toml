@@ -108,6 +108,7 @@ vpx                      = "0.3.1"
 libvpx-native-sys        = "*"
 ffmpeg-sys               = "*"
 ffmpeg                   = { git = "https://github.com/meh/rust-ffmpeg", rev = "28b7a82ac1ca1e201f1967b7231c21eb2e2f7447" }
+chemfiles                = "0.8"
 
 [lib]
 name = "chemsim"

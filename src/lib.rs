@@ -7,6 +7,7 @@
 #![feature(use_extern_macros)]
 #![feature(const_fn)]
 
+extern crate chemfiles;
 extern crate piston;
 extern crate graphics;
 extern crate opengl_graphics;
