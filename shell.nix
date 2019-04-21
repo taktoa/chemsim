@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> {} }:
+{ pkgs ? import ./nix/nixpkgs.nix }:
 
 pkgs.stdenv.mkDerivation {
   name = "chemsim-0.1.0";
@@ -19,6 +19,11 @@ pkgs.stdenv.mkDerivation {
     pkgs.pkgconfig
     pkgs.libvpx
     pkgs.ffmpeg-full
+    pkgs.rustup
+    pkgs.cmake
+    # pkgs.openbabel
+    pkgs.perl
+    # (import /nix/store/m5aygxcn0cvnvsk3i66r7b1d8sk2av39-cp2k-2018-07-25.drv)
   ];
 
   AF_PATH = pkgs.arrayfire;

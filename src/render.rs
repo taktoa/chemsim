@@ -6,7 +6,12 @@ use super::display::{Drawable, RGB, PixelPos};
 
 pub fn render_geometry<D: Drawable>(geometry: &Geometry, buf: &mut D) {
     let (w, h) = buf.dimensions();
-    let vec = geometry.get_underlying();
+    let mut vec = Vec::new();
+    let dims = geometry.dims();
+    assert_eq!(dims[2], 1);
+    assert_eq!(dims[3], 1);
+    unsafe { vec.resize((dims[0] * dims[1]) as usize, std::mem::zeroed()); }
+    af::transpose(geometry, false).host(&mut vec);
     for x in 0 .. w {
         for y in 0 .. h {
             let i = ((y * w) + x) as usize;
@@ -41,25 +46,25 @@ pub fn render_vector_field<D: Drawable>(field: &(Matrix, Matrix), buf: &mut D) {
     assert_eq!(size, vy.get_shape());
 
     let mag = vx.hadamard(&vx) + vy.hadamard(&vy);
-    let phase = Matrix::unsafe_new(
-        af::arg(&af::cplx2(vx.get_array(), vy.get_array(), true)));
+    // let phase = Matrix::unsafe_new(
+    //     af::arg(&af::cplx2(vx.get_array(), vy.get_array(), true)));
 
-    let hsv_array: af::Array = {
-        let hue: matrix::Matrix<f32> = {
-            phase
-                .cast::<f32>()
-                .shift(std::f32::consts::PI)
-                .scale(std::f32::consts::FRAC_1_PI * 0.5)
+    let hsv_array: af::Array<f32> = {
+        let hue: matrix::Matrix = {
+            matrix::Matrix::new_filled(0.0, size)
+            // phase
+            //     .shift(std::f32::consts::PI)
+            //     .scale(std::f32::consts::FRAC_1_PI * 0.5)
 
         };
 
-        let sat: matrix::Matrix<f32> = {
+        let sat: matrix::Matrix = {
             matrix::Matrix::new_filled(1.0, size)
         };
 
-        let val: matrix::Matrix<f32> = {
-            mag.z_score().cast::<f32>().logistic()
-            // mag.clamp(0.0, 1.0).scale(1.2247).cast::<f32>()
+        let val: matrix::Matrix = {
+            // mag.z_score().logistic()
+            mag.clamp(0.0, 1.0).scale(1.2247)
         };
 
         assert_eq!(size, hue.get_shape());
@@ -73,11 +78,11 @@ pub fn render_vector_field<D: Drawable>(field: &(Matrix, Matrix), buf: &mut D) {
         ])
     };
 
-    let rgb_array: af::Array = af::hsv2rgb(&hsv_array);
+    let rgb_array: af::Array<f32> = af::hsv2rgb(&hsv_array);
 
-    let r_matrix = matrix::Matrix::<f32>::unsafe_new(af::slice(&rgb_array, 0));
-    let g_matrix = matrix::Matrix::<f32>::unsafe_new(af::slice(&rgb_array, 1));
-    let b_matrix = matrix::Matrix::<f32>::unsafe_new(af::slice(&rgb_array, 2));
+    let r_matrix = matrix::Matrix::unsafe_new(af::slice(&rgb_array, 0));
+    let g_matrix = matrix::Matrix::unsafe_new(af::slice(&rgb_array, 1));
+    let b_matrix = matrix::Matrix::unsafe_new(af::slice(&rgb_array, 2));
 
     assert_eq!(size, r_matrix.get_shape());
     assert_eq!(size, g_matrix.get_shape());

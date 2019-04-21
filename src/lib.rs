@@ -3,8 +3,6 @@
 #![allow(unused_variables)]
 #![allow(non_snake_case)]
 #![allow(unused_parens)]
-#![feature(duration_as_u128)]
-#![feature(use_extern_macros)]
 #![feature(const_fn)]
 
 extern crate chemfiles;
@@ -25,13 +23,15 @@ extern crate input;
 // extern crate ffmpeg;
 
 #[macro_use]
-extern crate conrod;
+extern crate conrod_core as conrod;
+
+extern crate conrod_piston;
 
 pub mod matrix;
-pub mod convolver;
 pub mod lbm;
 pub mod display;
 pub mod render;
 pub mod theme;
-pub mod preconditioned;
+// pub mod preconditioned;
 // pub mod record;
+pub mod qchem;

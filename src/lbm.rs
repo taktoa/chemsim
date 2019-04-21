@@ -6,6 +6,8 @@ use super::matrix;
 
 // -----------------------------------------------------------------------------
 
+pub use super::matrix::Matrix;
+
 pub type Scalar = f32;
 
 // -----------------------------------------------------------------------------
@@ -33,10 +35,6 @@ impl std::ops::Add for Vector {
         Vector(self.0 + rhs.0, self.1 + rhs.1)
     }
 }
-
-// -----------------------------------------------------------------------------
-
-pub type Matrix = matrix::Matrix<Scalar>;
 
 // -----------------------------------------------------------------------------
 
@@ -96,7 +94,7 @@ pub struct Direction {
 
 // -----------------------------------------------------------------------------
 
-pub type Geometry = matrix::Matrix<bool>;
+pub type Geometry = af::Array<bool>;
 
 // -----------------------------------------------------------------------------
 
@@ -523,7 +521,7 @@ impl State {
         for (pair, mut sw_pair) in self.populations().iter().zip(&mut sw_pops) {
             let (dir, pop, sw_pop) = (pair.0.clone(), &pair.1, &mut sw_pair.1);
             af::replace(sw_pop.get_array_mut(),
-                        self.geometry.get_array(),
+                        &self.geometry,
                         pop.get_array());
         }
         *(self.lattice.populations_mut()) = sw_pops;

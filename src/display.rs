@@ -14,7 +14,6 @@ use image;
 use chrono;
 use glutin_window;
 use conrod::{self, widget, Colorable, Positionable, Widget};
-use conrod::backend::piston as conrod_piston;
 use opengl_graphics;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy, Hash)]
@@ -212,9 +211,11 @@ pub fn conrod() {
     let (mut glyph_cache, mut text_texture_cache) = {
         let scale_tolerance:    f32 = 0.1;
         let position_tolerance: f32 = 0.1;
-        let cache = conrod::text::GlyphCache::new(w as u32, h as u32,
-                                                  scale_tolerance,
-                                                  position_tolerance);
+        let cache = conrod::text::GlyphCache::builder()
+            .dimensions(w as u32, h as u32)
+            .scale_tolerance(scale_tolerance)
+            .position_tolerance(position_tolerance)
+            .build();
         let init = vec![128; w * h];
         let settings = TextureSettings::new();
         let texture = Texture::from_memory_alpha(&init, w as u32, h as u32, &settings).unwrap();
@@ -279,7 +280,7 @@ pub fn conrod() {
                     fn texture_from_image<T>(img: &T) -> &T { img }
 
                     // Draw the conrod `render::Primitives`.
-                    conrod::backend::piston::draw::primitives(
+                    conrod_piston::draw::primitives(
                         primitives,
                         context,
                         graphics,

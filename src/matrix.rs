@@ -2,15 +2,14 @@ extern crate num;
 
 use std;
 use arrayfire as af;
-use std::marker::PhantomData;
+use arrayfire::HasAfEnum;
 
 pub use self::num::Complex;
 pub use num_traits::identities::One;
 
 #[derive(Clone)]
-pub struct Matrix<Element> {
-    array:  af::Array,
-    marker: PhantomData<Element>,
+pub struct Matrix {
+    array: af::Array<f32>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -21,8 +20,8 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
-    pub fn new(slice: &[Element], dims: (usize, usize)) -> Result<Self> {
+impl Matrix {
+    pub fn new(slice: &[f32], dims: (usize, usize)) -> Result<Self> {
         let (w, h) = dims;
         if slice.len() != w * h { Err(Error::InvalidSliceSize)?; }
         let dim4 = af::Dim4::new(&[w as u64, h as u64, 1, 1]);
@@ -30,22 +29,22 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
         Ok(Matrix::unsafe_new(arr))
     }
 
-    pub fn unsafe_new(array: af::Array) -> Self {
-        assert_eq!(Element::get_af_dtype(), array.get_type());
+    pub fn unsafe_new(array: af::Array<f32>) -> Self {
+        assert_eq!(f32::get_af_dtype(), array.get_type());
         let dims = array.dims();
         assert_eq!(dims[2], 1);
         assert_eq!(dims[3], 1);
-        Matrix { array: array, marker: PhantomData }
+        Matrix { array: array }
     }
 
-    pub fn new_filled(value: Element, dims: (usize, usize)) -> Self {
+    pub fn new_filled(value: f32, dims: (usize, usize)) -> Self {
         let (w, h) = dims;
-        let mut vec: Vec<Element> = Vec::new();
+        let mut vec: Vec<f32> = Vec::new();
         vec.resize(w * h, value);
         Matrix::new(&vec[..], dims).unwrap()
     }
 
-    pub fn new_diag(diagonal: &[Element], offset: i32) -> Self {
+    pub fn new_diag(diagonal: &[f32], offset: i32) -> Self {
         let vector = Matrix::new(diagonal, (diagonal.len(), 1)).unwrap();
         Matrix::unsafe_new(af::diag_create(&vector.array, offset))
     }
@@ -53,14 +52,14 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
     pub fn new_identity(dims: (usize, usize)) -> Self {
         let (w, h) = dims;
         let dim4 = af::Dim4::new(&[h as u64, w as u64, 1, 1]);
-        Matrix::unsafe_new(af::identity::<Element>(dim4))
+        Matrix::unsafe_new(af::identity::<f32>(dim4))
     }
 
     pub fn new_random(dims: (usize, usize)) -> Self {
         let r_engine = af::RandomEngine::new(af::DEFAULT_RANDOM_ENGINE, None);
         let (w, h) = dims;
         let dim4 = af::Dim4::new(&[h as u64, w as u64, 1, 1]);
-        Matrix::unsafe_new(af::random_normal::<Element>(dim4, r_engine))
+        Matrix::unsafe_new(af::random_normal::<f32>(dim4, &r_engine))
     }
 
     pub fn get_width(&self)  -> usize { self.array.dims()[1] as usize }
@@ -72,13 +71,9 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
         (w, h)
     }
 
-    pub fn get_array(&self) -> &af::Array { &self.array }
+    pub fn get_array(&self) -> &af::Array<f32> { &self.array }
 
-    pub fn get_array_mut(&mut self) -> &mut af::Array { &mut self.array }
-
-    pub fn cast<T: af::HasAfEnum + Copy>(&self) -> Matrix<T> {
-        Matrix::unsafe_new(self.array.cast::<T>())
-    }
+    pub fn get_array_mut(&mut self) -> &mut af::Array<f32> { &mut self.array }
 
     /// Transpose of a matrix.
     pub fn transpose(&self) -> Self {
@@ -105,25 +100,25 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
     pub fn is_row(&self)    -> bool { self.array.is_vector() }
     pub fn is_col(&self)    -> bool { self.array.is_column() }
 
-    pub fn from_scalar(&self) -> Option<Element> {
+    pub fn from_scalar(&self) -> Option<f32> {
         if !self.array.is_scalar() { return None; }
         let mut vec = Vec::with_capacity(1);
         self.array.host(&mut vec[..]);
         Some(vec[0])
     }
 
-    pub fn from_row(&self) -> Option<Vec<Element>> {
+    pub fn from_row(&self) -> Option<Vec<f32>> {
         if !self.array.is_vector() { return None; }
         let mut vec = Vec::with_capacity(self.get_width());
         self.array.host(&mut vec[..]);
         Some(vec)
     }
 
-    pub fn from_col(&self) -> Option<Vec<Element>> {
+    pub fn from_col(&self) -> Option<Vec<f32>> {
         self.transpose().from_row()
     }
 
-    pub fn get_underlying(&self) -> Vec<Element> {
+    pub fn get_underlying(&self) -> Vec<f32> {
         let mut vec = Vec::new();
         let num_elements = self.get_width() * self.get_height();
         unsafe { vec.resize(num_elements, std::mem::zeroed()); }
@@ -131,40 +126,12 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
         vec
     }
 
-    pub fn get_diagonal(&self, offset: i32) -> Vec<Element> {
+    pub fn get_diagonal(&self, offset: i32) -> Vec<f32> {
         let diag = af::diag_extract(&self.array, offset);
         Matrix::unsafe_new(diag).from_row().unwrap()
     }
 
-    pub fn multiply(a: &Self, b: &Self) -> Self {
-        assert_eq!(a.get_width(), b.get_height());
-        Matrix::unsafe_new(af::matmul(&a.array, &b.array,
-                                      af::MatProp::NONE, af::MatProp::NONE))
-    }
-
-    pub fn hadamard(&self, rhs: &Self) -> Self {
-        assert_eq!(self.get_shape(), rhs.get_shape());
-        Matrix::unsafe_new(af::mul(&self.array, &rhs.array, true))
-    }
-
-    pub fn divide(&self, rhs: &Self) -> Self {
-        assert_eq!(self.get_shape(), rhs.get_shape());
-        Matrix::unsafe_new(af::div(&self.array, &rhs.array, true))
-    }
-
-    pub fn conj(&self) -> Self {
-        match self.array.get_type() {
-            af::DType::C32 => Matrix::unsafe_new(af::conjg(&self.array)),
-            af::DType::C64 => Matrix::unsafe_new(af::conjg(&self.array)),
-            _              => self.clone(),
-        }
-    }
-
-    pub fn abs(&self) -> Self {
-        self.hadamard(&self.conj()).sqrt()
-    }
-
-    pub fn recip(&self) -> Self where Element: One {
+    pub fn recip(&self) -> Self {
         use num_traits::identities::one;
         Matrix::new_filled(one(), self.get_shape()).divide(self)
     }
@@ -195,21 +162,18 @@ impl<Element: af::HasAfEnum + Copy> Matrix<Element> {
         self.maximum_complex().im
     }
 
-    pub fn z_score(&self) -> Matrix<f64> {
-        let avg = af::mean_all(self.get_array()).0;
-        let std = af::stdev_all(self.get_array()).0;
-        (self.cast::<f64>() - Matrix::new_filled(avg, self.get_shape()))
-            .scale(1.0 / std)
-    }
+    // pub fn z_score(&self) -> Matrix {
+    //     let avg = af::mean_all(self.get_array()).0;
+    //     let std = af::stdev_all(self.get_array()).0;
+    //     (self.cast::<f64>() - Matrix::new_filled(avg, self.get_shape()))
+    //         .scale(1.0 / std)
+    // }
 
     pub fn logistic(&self) -> Self {
         Matrix::unsafe_new(af::sigmoid(&self.array))
     }
-}
 
-// -----------------------------------------------------------------------------
 
-impl Matrix<f32> {
     pub fn shift(&self, shifter: f32) -> Self {
         Matrix::unsafe_new(&self.array + shifter)
     }
@@ -221,137 +185,21 @@ impl Matrix<f32> {
     pub fn clamp(&self, min: f32, max: f32) -> Self {
         Matrix::unsafe_new(af::clamp(&self.array, &min, &max, true))
     }
-}
 
-impl Matrix<f64> {
-    pub fn shift(&self, shifter: f64) -> Self {
-        Matrix::unsafe_new(&self.array + shifter)
+    pub fn multiply(a: &Self, b: &Self) -> Self {
+        assert_eq!(a.get_width(), b.get_height());
+        Matrix::unsafe_new(af::matmul(&a.array, &b.array,
+                                      af::MatProp::NONE, af::MatProp::NONE))
     }
 
-    pub fn scale(&self, scalar: f64) -> Self {
-        Matrix::unsafe_new(&self.array * scalar)
+    pub fn hadamard(&self, rhs: &Self) -> Self {
+        assert_eq!(self.get_shape(), rhs.get_shape());
+        Matrix::unsafe_new(af::mul(&self.array, &rhs.array, true))
     }
 
-    pub fn clamp(&self, min: f64, max: f64) -> Self {
-        Matrix::unsafe_new(af::clamp(&self.array, &min, &max, true))
-    }
-}
-
-impl Matrix<Complex<f32>> {
-    pub fn scale(&self, scalar: Complex<f32>) -> Self {
-        Matrix::unsafe_new(&self.array * scalar)
-    }
-}
-
-impl Matrix<Complex<f64>> {
-    pub fn scale(&self, scalar: Complex<f64>) -> Self {
-        Matrix::unsafe_new(&self.array * scalar)
-    }
-}
-
-// -----------------------------------------------------------------------------
-
-impl Matrix<Complex<f32>> {
-    pub fn real(&self) -> Matrix<f32> {
-        Matrix::unsafe_new(af::real(self.get_array()))
-    }
-
-    pub fn imag(&self) -> Matrix<f32> {
-        Matrix::unsafe_new(af::imag(self.get_array()))
-    }
-
-    pub fn magnitude(&self) -> Matrix<f32> {
-        self.hadamard(&self.conj()).real().sqrt()
-    }
-
-    /// Returned numbers are in `[-π, π]`
-    pub fn phase(&self) -> Matrix<f32> {
-        Matrix::unsafe_new(af::arg(self.get_array()))
-    }
-}
-
-impl Matrix<Complex<f64>> {
-    pub fn real(&self) -> Matrix<f64> {
-        Matrix::unsafe_new(af::real(self.get_array()))
-    }
-
-    pub fn imag(&self) -> Matrix<f64> {
-        Matrix::unsafe_new(af::imag(self.get_array()))
-    }
-
-    pub fn magnitude(&self) -> Matrix<f64> {
-        self.hadamard(&self.conj()).real().sqrt()
-    }
-
-    /// Returned numbers are in `[-π, π]`
-    pub fn phase(&self) -> Matrix<f64> {
-        Matrix::unsafe_new(af::arg(self.get_array()))
-    }
-}
-
-// -----------------------------------------------------------------------------
-
-impl Matrix<f32> {
-    pub fn dft(&self, norm_factor: f64) -> Matrix<Complex<f32>> {
-        Matrix::unsafe_new(af::fft2(&self.array,
-                                    norm_factor,
-                                    self.get_height() as i64,
-                                    self.get_width()  as i64))
-    }
-
-    pub fn inverse_dft(&self, norm_factor: f64) -> Matrix<Complex<f32>> {
-        Matrix::unsafe_new(af::ifft2(&self.array,
-                                     norm_factor,
-                                     self.get_height() as i64,
-                                     self.get_width()  as i64))
-    }
-}
-
-impl Matrix<Complex<f32>> {
-    pub fn dft(&self, norm_factor: f64) -> Matrix<Complex<f32>> {
-        Matrix::unsafe_new(af::fft2(&self.array,
-                                    norm_factor,
-                                    self.get_height() as i64,
-                                    self.get_width()  as i64))
-    }
-
-    pub fn inverse_dft(&self, norm_factor: f64) -> Matrix<Complex<f32>> {
-        Matrix::unsafe_new(af::ifft2(&self.array,
-                                     norm_factor,
-                                     self.get_height() as i64,
-                                     self.get_width()  as i64))
-    }
-}
-
-impl Matrix<f64> {
-    pub fn dft(&self, norm_factor: f64) -> Matrix<Complex<f64>> {
-        Matrix::unsafe_new(af::fft2(&self.array,
-                                    norm_factor,
-                                    self.get_height() as i64,
-                                    self.get_width()  as i64))
-    }
-
-    pub fn inverse_dft(&self, norm_factor: f64) -> Matrix<Complex<f64>> {
-        Matrix::unsafe_new(af::ifft2(&self.array,
-                                     norm_factor,
-                                     self.get_height() as i64,
-                                     self.get_width()  as i64))
-    }
-}
-
-impl Matrix<Complex<f64>> {
-    pub fn dft(&self, norm_factor: f64) -> Matrix<Complex<f64>> {
-        Matrix::unsafe_new(af::fft2(&self.array,
-                                    norm_factor,
-                                    self.get_height() as i64,
-                                    self.get_width()  as i64))
-    }
-
-    pub fn inverse_dft(&self, norm_factor: f64) -> Matrix<Complex<f64>> {
-        Matrix::unsafe_new(af::ifft2(&self.array,
-                                     norm_factor,
-                                     self.get_height() as i64,
-                                     self.get_width()  as i64))
+    pub fn divide(&self, rhs: &Self) -> Self {
+        assert_eq!(self.get_shape(), rhs.get_shape());
+        Matrix::unsafe_new(af::div(&self.array, &rhs.array, true))
     }
 }
 
@@ -359,8 +207,8 @@ impl Matrix<Complex<f64>> {
 
 use std::ops::AddAssign;
 
-impl<T: af::HasAfEnum + Copy> AddAssign<Matrix<T>> for Matrix<T> {
-    fn add_assign(&mut self, rhs: Matrix<T>) {
+impl AddAssign<Matrix> for Matrix {
+    fn add_assign(&mut self, rhs: Matrix) {
         self.array += rhs.array;
     }
 }
@@ -369,30 +217,30 @@ impl<T: af::HasAfEnum + Copy> AddAssign<Matrix<T>> for Matrix<T> {
 
 use std::ops::Add;
 
-impl<T: af::HasAfEnum + Copy> Add<Matrix<T>> for Matrix<T> {
-    type Output = Matrix<T>;
-    fn add(self, rhs: Matrix<T>) -> Matrix<T> {
+impl Add<Matrix> for Matrix {
+    type Output = Matrix;
+    fn add(self, rhs: Matrix) -> Matrix {
         Matrix::unsafe_new(self.array + rhs.array)
     }
 }
 
-impl<'a, T: af::HasAfEnum + Copy> Add<&'a Matrix<T>> for Matrix<T> {
-    type Output = Matrix<T>;
-    fn add(self, rhs: &'a Matrix<T>) -> Matrix<T> {
+impl<'a> Add<&'a Matrix> for Matrix {
+    type Output = Matrix;
+    fn add(self, rhs: &'a Matrix) -> Matrix {
         Matrix::unsafe_new(self.array + &rhs.array)
     }
 }
 
-impl<'a, T: af::HasAfEnum + Copy> Add<Matrix<T>> for &'a Matrix<T> {
-    type Output = Matrix<T>;
-    fn add(self, rhs: Matrix<T>) -> Matrix<T> {
+impl<'a> Add<Matrix> for &'a Matrix {
+    type Output = Matrix;
+    fn add(self, rhs: Matrix) -> Matrix {
         Matrix::unsafe_new(&self.array + rhs.array)
     }
 }
 
-impl<'a, 'b, T: af::HasAfEnum + Copy> Add<&'a Matrix<T>> for &'b Matrix<T> {
-    type Output = Matrix<T>;
-    fn add(self, rhs: &'a Matrix<T>) -> Matrix<T> {
+impl<'a, 'b> Add<&'a Matrix> for &'b Matrix {
+    type Output = Matrix;
+    fn add(self, rhs: &'a Matrix) -> Matrix {
         Matrix::unsafe_new(&self.array + &rhs.array)
     }
 }
@@ -401,30 +249,30 @@ impl<'a, 'b, T: af::HasAfEnum + Copy> Add<&'a Matrix<T>> for &'b Matrix<T> {
 
 use std::ops::Sub;
 
-impl<T: af::HasAfEnum + Copy> Sub<Matrix<T>> for Matrix<T> {
-    type Output = Matrix<T>;
-    fn sub(self, rhs: Matrix<T>) -> Matrix<T> {
+impl Sub<Matrix> for Matrix {
+    type Output = Matrix;
+    fn sub(self, rhs: Matrix) -> Matrix {
         Matrix::unsafe_new(self.array - rhs.array)
     }
 }
 
-impl<'a, T: af::HasAfEnum + Copy> Sub<&'a Matrix<T>> for Matrix<T> {
-    type Output = Matrix<T>;
-    fn sub(self, rhs: &'a Matrix<T>) -> Matrix<T> {
+impl<'a> Sub<&'a Matrix> for Matrix {
+    type Output = Matrix;
+    fn sub(self, rhs: &'a Matrix) -> Matrix {
         Matrix::unsafe_new(self.array - &rhs.array)
     }
 }
 
-impl<'a, T: af::HasAfEnum + Copy> Sub<Matrix<T>> for &'a Matrix<T> {
-    type Output = Matrix<T>;
-    fn sub(self, rhs: Matrix<T>) -> Matrix<T> {
+impl<'a> Sub<Matrix> for &'a Matrix {
+    type Output = Matrix;
+    fn sub(self, rhs: Matrix) -> Matrix {
         Matrix::unsafe_new(&self.array - rhs.array)
     }
 }
 
-impl<'a, 'b, T: af::HasAfEnum + Copy> Sub<&'a Matrix<T>> for &'b Matrix<T> {
-    type Output = Matrix<T>;
-    fn sub(self, rhs: &'a Matrix<T>) -> Matrix<T> {
+impl<'a, 'b> Sub<&'a Matrix> for &'b Matrix {
+    type Output = Matrix;
+    fn sub(self, rhs: &'a Matrix) -> Matrix {
         Matrix::unsafe_new(&self.array - &rhs.array)
     }
 }

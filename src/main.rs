@@ -2,12 +2,10 @@
 #![allow(unused_imports)]
 #![allow(unused_variables)]
 #![allow(non_snake_case)]
-#![feature(duration_as_u128)]
 
 extern crate chemsim;
 extern crate piston;
 extern crate arrayfire;
-extern crate conrod;
 extern crate gif;
 extern crate image;
 // extern crate ffmpeg;
@@ -17,10 +15,10 @@ use chemsim::lbm::{Scalar, Matrix};
 use arrayfire as af;
 use arrayfire::HasAfEnum;
 
-pub fn draw_matrix<T: Copy + HasAfEnum, D: Drawable>(
+pub fn draw_matrix<D: Drawable>(
     buffer: &mut D,
-    matrix: &chemsim::matrix::Matrix<T>,
-    shader: &(Fn(T) -> i8),
+    matrix: &chemsim::matrix::Matrix,
+    shader: &(Fn(f32) -> i8),
 ) {
     let (w, h) = matrix.get_shape();
     let copied = matrix.get_underlying();
@@ -269,7 +267,8 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
 
         let vec = vec;
 
-        matrix::Matrix::new(&vec, size).unwrap()
+        let dim4 = af::Dim4::new(&[w as u64, h as u64, 1, 1]);
+        af::transpose(&af::Array::new(&vec[..], dim4), false)
     };
 
     let state = lbm::State::initial(
@@ -286,7 +285,6 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
         display_mode: DisplayMode::Velocity,
     }
 }
-
 
 fn main() -> std::io::Result<()> {
     af::init();

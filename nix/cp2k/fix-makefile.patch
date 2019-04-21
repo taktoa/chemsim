@@ -1,0 +1,13 @@
+diff --git a/cp2k/makefiles/Makefile b/cp2k/makefiles/Makefile
+index 3efbcacdd..5f183af45 100644
+--- a/cp2k/makefiles/Makefile
++++ b/cp2k/makefiles/Makefile
+@@ -427,8 +427,6 @@ endif
+ # some practical variables for the build
+ ifeq ($(CPPSHELL),)
+ CPPSHELL := -D__COMPILE_ARCH="\"$(ARCH)\""\
+-            -D__COMPILE_DATE="\"$(shell date)\""\
+-            -D__COMPILE_HOST="\"$(shell hostname)\""\
+             -D__COMPILE_REVISION="\"$(strip $(REVISION))\""\
+             -D__DATA_DIR="\"$(DATA_DIR)\""
+ endif
