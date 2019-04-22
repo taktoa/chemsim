@@ -4,6 +4,7 @@
 #![allow(non_snake_case)]
 #![allow(unused_parens)]
 #![feature(const_fn)]
+#![feature(duration_float)]
 
 extern crate chemfiles;
 extern crate piston;

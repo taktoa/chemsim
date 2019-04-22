@@ -63,7 +63,7 @@ pub struct LBMSim {
     speed_factor: usize,
     display_mode: DisplayMode,
     size:         (usize, usize),
-    state:        chemsim::lbm::State,
+    state:        chemsim::lbm::State<chemsim::lbm::D2Q9>,
 }
 
 impl chemsim::display::Simulation for LBMSim {
@@ -110,10 +110,10 @@ impl chemsim::display::Simulation for LBMSim {
     }
 
     fn render<D: chemsim::display::Drawable>(&self, buf: &mut D) {
-        if self.state.is_unstable() {
-            println!("[ERROR] Instability detected!");
-        }
-        println!("Max speed: {}", self.state.speed().maximum_real());
+        // if self.state.is_unstable() {
+        //     println!("[ERROR] Instability detected!");
+        // }
+        // println!("Max speed: {}", self.state.speed().maximum_real());
         // for (i, (_, pop)) in self.state.populations().iter().enumerate() {
         //     let fft = pop.dft(1.0).abs();
         //     let nonzeros = af::count_all(fft.get_array()).0 as usize;
@@ -160,8 +160,11 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
 
     // let collision = lbm::BGK { tau: 15.0 };
 
-    let viscosity = 200.0;
-    let collision = lbm::TRT::new(0.25, viscosity, &disc);
+    // let viscosity = 10.0;
+    // let collision = lbm::TRT::new(0.25, viscosity, &disc);
+
+    let viscosity = 1000.0;
+    let collision = lbm::KBC::new(viscosity);
 
     let initial_velocity = {
         let mut vec_x = Vec::new();
@@ -170,7 +173,7 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
         vec_y.resize(w * h, 0.0);
         for x in 0 .. w {
             for y in 0 .. h {
-                let scale = 0.01;
+                let scale = 0.2;
                 // vec_x[(y * w) + x] = -(y as Scalar) * scale / (h as Scalar);
                 // vec_y[(y * w) + x] =  (x as Scalar) * scale / (w as Scalar);
                 vec_x[(y * w) + x] = scale;
@@ -288,12 +291,18 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
 
 fn main() -> std::io::Result<()> {
     af::init();
+    af::set_backend(af::Backend::CUDA);
     // ffmpeg::init()?;
 
     println!("[NOTE] ArrayFire successfully initialized!");
+    println!("[NOTE] ArrayFire backend is: {:?} chosen from {:?}",
+             af::get_active_backend(),
+             af::get_available_backends());
+
+    println!("[NOTE] ArrayFire device info: {:?}", af::device_info());
 
     let recorder = false;
-    let (w, h) = (360, 240);
+    let (w, h) = (200, 200);
 
     // -------------------------------------------------------------------------
 

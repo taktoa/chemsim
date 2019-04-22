@@ -46,15 +46,14 @@ pub fn render_vector_field<D: Drawable>(field: &(Matrix, Matrix), buf: &mut D) {
     assert_eq!(size, vy.get_shape());
 
     let mag = vx.hadamard(&vx) + vy.hadamard(&vy);
-    // let phase = Matrix::unsafe_new(
-    //     af::arg(&af::cplx2(vx.get_array(), vy.get_array(), true)));
+    let phase = Matrix::unsafe_new(
+        af::arg(&af::cplx2(vx.get_array(), vy.get_array(), true)));
 
     let hsv_array: af::Array<f32> = {
         let hue: matrix::Matrix = {
-            matrix::Matrix::new_filled(0.0, size)
-            // phase
-            //     .shift(std::f32::consts::PI)
-            //     .scale(std::f32::consts::FRAC_1_PI * 0.5)
+            phase
+                .shift(std::f32::consts::PI)
+                .scale(std::f32::consts::FRAC_1_PI * 0.5)
 
         };
 
@@ -63,8 +62,13 @@ pub fn render_vector_field<D: Drawable>(field: &(Matrix, Matrix), buf: &mut D) {
         };
 
         let val: matrix::Matrix = {
-            // mag.z_score().logistic()
-            mag.clamp(0.0, 1.0).scale(1.2247)
+            let avg = af::mean_all(mag.get_array()).0;
+            let std = af::stdev_all(mag.get_array()).0;
+            let shape = mag.get_shape();
+            (mag - Matrix::new_filled(avg as f32, shape))
+                .scale(1.0 / std as f32)
+                .logistic()
+            // mag.clamp(0.0, 1.0)
         };
 
         assert_eq!(size, hue.get_shape());

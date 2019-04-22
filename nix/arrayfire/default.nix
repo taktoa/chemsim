@@ -1,6 +1,7 @@
-{ clangStdenv, fetchurl, fetchFromGitHub, cmake, pkgconfig,
-  opencl-clhpp, ocl-icd, fftw, fftwFloat, mkl,
-  blas, openblas, liblapack, boost, mesa_noglu, freeimage, python
+{ stdenv, fetchurl, fetchFromGitHub, cmake, pkgconfig,
+  cudatoolkit, opencl-clhpp, ocl-icd, fftw, fftwFloat, mkl,
+  blas, openblas, liblapack, boost, mesa_noglu, libGLU_combined,
+  freeimage, python, doxygen
 }:
 
 with {
@@ -33,7 +34,7 @@ with {
   });
 };
 
-clangStdenv.mkDerivation {
+stdenv.mkDerivation {
   name = "arrayfire-3.6.1";
 
   src = fetchFromGitHub {
@@ -45,7 +46,10 @@ clangStdenv.mkDerivation {
   };
 
   cmakeFlags = [
-    "-DAF_BUILD_OPENCL=NO"
+    "-DAF_BUILD_OPENCL=OFF"
+    "-DAF_BUILD_EXAMPLES=OFF"
+    "-DBUILD_TESTING=OFF"
+    "-DCMAKE_LIBRARY_PATH=${cudatoolkit}/lib/stubs"
   ];
 
   # cmakeFlags = [
@@ -59,21 +63,29 @@ clangStdenv.mkDerivation {
 
   postPatch = ''
     mkdir -p ./build/third_party/clFFT/src
-    cp -Rv --no-preserve=mode,ownership ${clfftSource}/ ./build/third_party/clFFT/src/clFFT-ext/
+    cp -R --no-preserve=mode,ownership ${clfftSource}/ ./build/third_party/clFFT/src/clFFT-ext/
     mkdir -p ./build/third_party/clBLAS/src
-    cp -Rv --no-preserve=mode,ownership ${clblasSource}/ ./build/third_party/clBLAS/src/clBLAS-ext/
+    cp -R --no-preserve=mode,ownership ${clblasSource}/ ./build/third_party/clBLAS/src/clBLAS-ext/
     mkdir -p ./build/include/CL
-    cp -Rv --no-preserve=mode,ownership ${cl2hppSource} ./build/include/CL/cl2.hpp
+    cp -R --no-preserve=mode,ownership ${cl2hppSource} ./build/include/CL/cl2.hpp
+  '';
+
+  preBuild = ''
+    export CUDA_PATH="${cudatoolkit}"
   '';
 
   enableParallelBuilding = true;
 
   buildInputs = [
     cmake pkgconfig
+    cudatoolkit
     opencl-clhpp ocl-icd fftw fftwFloat
     #lapack
+    mkl
     openblas
+    libGLU_combined
     mesa_noglu freeimage
     boost.out boost.dev python
+    #doxygen
   ];
 }

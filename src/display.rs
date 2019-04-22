@@ -86,6 +86,8 @@ pub trait Simulation {
 }
 
 pub fn example<S: Simulation>(initial: S) {
+    let start_time = Instant::now();
+
     let (w, h) = initial.size();
 
     let opengl = OpenGL::V3_2;
@@ -114,6 +116,8 @@ pub fn example<S: Simulation>(initial: S) {
     let mut last_draw = Instant::now();
     let mut events = Events::new(EventSettings::new());
 
+    let mut frames: u32 = 0;
+
     while let Some(e) = events.next(&mut window) {
         state.handle(&e);
 
@@ -138,8 +142,12 @@ pub fn example<S: Simulation>(initial: S) {
                 clear([0.0, 0.0, 0.0, 1.0], gl);
                 image.draw(&texture, &Default::default(), c.transform, gl);
             });
+            frames += 1;
         }
     }
+
+    println!("Average frames per second: {}",
+             frames as f64 / start_time.elapsed().as_float_secs());
 }
 
 extern crate gif;

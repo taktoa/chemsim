@@ -39,9 +39,8 @@ impl Matrix {
 
     pub fn new_filled(value: f32, dims: (usize, usize)) -> Self {
         let (w, h) = dims;
-        let mut vec: Vec<f32> = Vec::new();
-        vec.resize(w * h, value);
-        Matrix::new(&vec[..], dims).unwrap()
+        let dim4 = af::Dim4::new(&[w as u64, h as u64, 1, 1]);
+        Matrix::unsafe_new(af::constant(value, dim4))
     }
 
     pub fn new_diag(diagonal: &[f32], offset: i32) -> Self {
