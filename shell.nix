@@ -1,15 +1,13 @@
 { pkgs ? import ./nix/nixpkgs.nix }:
 
-let arrayfire = import /nix/store/amg328myrglfk2cnx725arz55qxg6c89-arrayfire-3.6.1.drv; in
-
 pkgs.stdenv.mkDerivation {
   name = "chemsim-0.1.0";
 
   src = null;
 
   buildInputs = [
-    #pkgs.arrayfire
-    arrayfire
+    pkgs.arrayfire
+    pkgs.forge
     pkgs.liblapack
     pkgs.sqlite
     pkgs.nanomsg
@@ -29,7 +27,7 @@ pkgs.stdenv.mkDerivation {
     # (import /nix/store/m5aygxcn0cvnvsk3i66r7b1d8sk2av39-cp2k-2018-07-25.drv)
   ];
 
-  AF_PATH = arrayfire;
+  AF_PATH = pkgs.arrayfire;
 
   LIBCLANG_PATH = "${pkgs.llvmPackages_6.libclang.lib}/lib";
 
