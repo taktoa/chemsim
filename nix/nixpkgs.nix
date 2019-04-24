@@ -10,6 +10,7 @@ with {
       openbabel = self.callPackage ./openbabel {};
       clfft     = self.callPackage ./clfft     {};
       arrayfire = self.callPackage ./arrayfire {};
+      forge     = self.callPackage ./forge     {};
       yaehmop   = self.callPackage ./yaehmop   {};
       avogadro  = self.callPackage ./avogadro  {};
       cp2k      = self.callPackage ./cp2k      {};
