@@ -2,6 +2,7 @@
 #![allow(unused_imports)]
 #![allow(unused_variables)]
 #![allow(non_snake_case)]
+#![feature(duration_float)]
 
 extern crate chemsim;
 extern crate piston;
@@ -64,6 +65,7 @@ pub struct LBMSim {
     display_mode: DisplayMode,
     size:         (usize, usize),
     state:        chemsim::lbm::State<chemsim::lbm::D2Q9>,
+    cursor:       ([f64; 2], bool),
 }
 
 impl chemsim::display::Simulation for LBMSim {
@@ -71,16 +73,50 @@ impl chemsim::display::Simulation for LBMSim {
 
     fn handle(&mut self, input: &piston::input::Event) {
         use piston::input::*;
+        use piston::input::mouse::*;
         use piston::input::keyboard::*;
 
-        if let Some(Button::Keyboard(k)) = input.release_args() {
+        if let Some(pos) = input.mouse_cursor_args() {
+            self.cursor = (pos, self.cursor.1);
+            if self.cursor.1 {
+                let x = f64::floor(pos[1]) as usize;
+                let y = f64::floor(pos[0]) as usize;
+                if (x < self.size.0) && (y < self.size.1) {
+                    let dims = self.state.geometry.dims();
+                    let [a, b, c, d] = dims.get();
+                    let mut vec: Vec<bool> = Vec::new();
+                    vec.resize((a * b * c * d) as usize, false);
+                    self.state.geometry.host(&mut vec);
+                    for a in 0 .. self.size.0 {
+                        for b in 0 .. self.size.1 {
+                            let diffX = i64::abs(a as i64 - x as i64);
+                            let diffY = i64::abs(b as i64 - y as i64);
+                            if (diffX < 5) && (diffY < 5) {
+                                vec[(b * self.size.0) + a] = true;
+                            }
+                        }
+                    }
+                    self.state.geometry = af::Array::new(&vec[..], dims);
+                }
+            }
+        } else if let Some(Button::Mouse(MouseButton::Left)) = input.press_args() {
+            self.cursor = (self.cursor.0, true);
+        } else if let Some(Button::Mouse(MouseButton::Left)) = input.release_args() {
+            self.cursor = (self.cursor.0, false);
+        } else if let Some(Button::Keyboard(k)) = input.release_args() {
             let old_speed_factor = self.speed_factor;
 
             match k {
-                Key::Minus => { self.speed_factor -= 1; },
-                Key::Plus  => { self.speed_factor += 1; },
-                Key::Space => { self.display_mode = self.display_mode.next(); },
-                _          => {},
+                Key::S => {
+                    self.speed_factor -= 1;
+                },
+                Key::W  => {
+                    self.speed_factor += 1;
+                },
+                Key::Space => {
+                    self.display_mode = self.display_mode.next();
+                },
+                _ => {},
             };
 
             if self.speed_factor < 1 {
@@ -163,8 +199,14 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
     // let viscosity = 10.0;
     // let collision = lbm::TRT::new(0.25, viscosity, &disc);
 
-    let viscosity = 1000.0;
-    let collision = lbm::KBC::new(viscosity);
+    // let viscosity = 10.0;
+    // let collision = lbm::Regularized::new(lbm::TRT::new(0.25, viscosity, &disc));
+
+    // let viscosity = 10.0;
+    // let collision = lbm::KBC::new(viscosity);
+
+    let viscosity = 10.0;
+    let collision = lbm::Regularized::new(lbm::KBC::new(viscosity));
 
     let initial_velocity = {
         let mut vec_x = Vec::new();
@@ -173,10 +215,10 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
         vec_y.resize(w * h, 0.0);
         for x in 0 .. w {
             for y in 0 .. h {
-                let scale = 0.2;
+                let scale = 0.02;
                 // vec_x[(y * w) + x] = -(y as Scalar) * scale / (h as Scalar);
                 // vec_y[(y * w) + x] =  (x as Scalar) * scale / (w as Scalar);
-                vec_x[(y * w) + x] = scale;
+                vec_x[(y * w) + x] = scale; //  * f32::sin(x as f32 / 25.0);
                 vec_y[(y * w) + x] = 0.0;
             }
         }
@@ -255,8 +297,13 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
                     if r < 25.0 {
                         set(x, y, true);
                     }
+                    if x == 0     { set(x, y, true); }
+                    if y == 0     { set(x, y, true); }
+                    if x == w - 1 { set(x, y, true); }
+                    if y == h - 1 { set(x, y, true); }
                 }
             }
+
             // for x in (128 - 51) .. (128 + 51) {
             //     for y in (128 - 50) .. (128 + 50) { set(x, y, true); }
             // }
@@ -284,8 +331,9 @@ fn initial_state(size: (usize, usize)) -> LBMSim {
     LBMSim {
         size:         size,
         state:        state,
-        speed_factor: 1,
-        display_mode: DisplayMode::Velocity,
+        speed_factor: 2,
+        display_mode: DisplayMode::Density,
+        cursor:       ([0.0, 0.0], false),
     }
 }
 
@@ -302,13 +350,27 @@ fn main() -> std::io::Result<()> {
     println!("[NOTE] ArrayFire device info: {:?}", af::device_info());
 
     let recorder = false;
-    let (w, h) = (200, 200);
+    let (w, h) = (400, 400);
 
     // -------------------------------------------------------------------------
 
     use chemsim::display::Simulation;
 
     let initial = initial_state((w, h));
+
+    // {
+    //     let start_time = std::time::Instant::now();
+    //
+    //     let mut state = initial;
+    //     let mut last_step = std::time::Instant::now();
+    //     for _ in 0 .. 1000 {
+    //         state.step(&last_step.elapsed());
+    //         last_step = std::time::Instant::now();
+    //     }
+    //
+    //     println!("Average frames per second: {}",
+    //              1000.0 / start_time.elapsed().as_float_secs());
+    // }
 
     chemsim::display::example(initial);
 

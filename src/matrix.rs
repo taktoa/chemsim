@@ -200,6 +200,18 @@ impl Matrix {
         assert_eq!(self.get_shape(), rhs.get_shape());
         Matrix::unsafe_new(af::div(&self.array, &rhs.array, true))
     }
+
+    pub fn log(&self) -> Self {
+        Matrix::unsafe_new(af::log(&self.array))
+    }
+
+    pub fn abs(&self) -> Self {
+        Matrix::unsafe_new(af::abs(&self.array))
+    }
+
+    pub fn minof(&self, rhs: &Self) -> Self {
+        Matrix::unsafe_new(af::minof(&self.array, &rhs.array, true))
+    }
 }
 
 // -----------------------------------------------------------------------------

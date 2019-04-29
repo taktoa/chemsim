@@ -136,10 +136,16 @@ pub trait Lattice {
         let v_x = inverse_density.hadamard(&md_x);
         let v_y = inverse_density.hadamard(&md_y);
         (v_x, v_y)
-    }
-
-    fn relative_velocity(&self) -> (Matrix, Matrix) {
-        unimplemented!()
+        // let norm = (v_x.hadamard(&v_x) + v_y.hadamard(&v_y)).sqrt();
+        // let dims = inverse_density.get_array().dims();
+        // let bools: af::Array<bool>
+        //     = af::iszero(&af::le::<af::Array<f32>, f32>(norm.get_array(), &0.2f32, true));
+        // let scaler = {
+        //     let mut scaler_arr = norm.recip().scale(0.2);
+        //     af::replace_scalar(scaler_arr.get_array_mut(), &bools, 1.0);
+        //     scaler_arr
+        // };
+        // (v_x.hadamard(&scaler), v_y.hadamard(&scaler))
     }
 
     fn speed(&self) -> Matrix {
@@ -324,7 +330,7 @@ pub trait CollisionOperator<L> {
         lattice:        &L,
         equilibrium:    &Populations,
         discretization: &Discretization,
-    ) -> Vec<Matrix>;
+    ) -> Populations;
 
     fn kinematic_shear_viscosity(&self, disc: &Discretization) -> Scalar;
 
@@ -346,13 +352,13 @@ impl<L: Lattice> CollisionOperator<L> for BGK {
         lattice:        &L,
         equilibrium:    &Populations,
         discretization: &Discretization,
-    ) -> Vec<Matrix>
+    ) -> Populations
     {
         let factor = -discretization.delta_t / self.tau;
         let mut result = Vec::with_capacity(lattice.populations().len());
         for (pair, pair_eq) in lattice.populations().iter().zip(equilibrium) {
             let (f_i, f_eq_i) = (pair.1.clone(), pair_eq.1.clone());
-            result.push((f_i - f_eq_i).scale(factor));
+            result.push((pair.0.clone(), &f_i + (&f_i - &f_eq_i).scale(factor)));
         }
         result
     }
@@ -398,14 +404,12 @@ impl<L: Lattice> CollisionOperator<L> for TRT {
         lattice:        &L,
         equilibrium:    &Populations,
         discretization: &Discretization,
-    ) -> Vec<Matrix>
+    ) -> Populations
     {
         let f            = lattice.populations();
         let f_swapped    = lattice.swap_populations();
         let f_eq         = lattice.equilibrium(discretization);
         let f_eq_swapped = lattice.swap_equilibrium(discretization);
-
-        let timer1 = std::time::Instant::now();
 
         let mut f_pm = Vec::new();
         for (pair, pair_swapped) in f.iter().zip(f_swapped) {
@@ -414,10 +418,6 @@ impl<L: Lattice> CollisionOperator<L> for TRT {
             f_pm.push((f_p.clone(), f_m.clone()));
         }
 
-        println!(">> Collision step 1 took {} ms", timer1.elapsed().as_millis());
-
-        let timer2 = std::time::Instant::now();
-
         let mut f_eq_pm = Vec::new();
         for (pair, pair_swapped) in f_eq.iter().zip(f_eq_swapped) {
             let f_eq_p = (&pair.1 + &pair_swapped.1);
@@ -425,25 +425,20 @@ impl<L: Lattice> CollisionOperator<L> for TRT {
             f_eq_pm.push((f_eq_p, f_eq_m));
         }
 
-        println!(">> Collision step 2 took {} ms", timer2.elapsed().as_millis());
-
-        let timer3 = std::time::Instant::now();
-
         let (dx, dt) = (discretization.delta_x, discretization.delta_t);
         let omega_m = 1.0 / self.tau_minus;
         let omega_p = 1.0 / self.tau_plus;
 
         let mut result = Vec::with_capacity(lattice.populations().len());
-        for (f_pm_i, f_eq_pm_i) in f_pm.iter().zip(f_eq_pm) {
-            let (f_p_i, f_m_i) = f_pm_i;
-            let (f_eq_p_i, f_eq_m_i) = f_eq_pm_i;
-            result.push((
+        for i in 0 .. lattice.populations().len() {
+            let (ref f_p_i, ref f_m_i) = f_pm[i];
+            let (ref f_eq_p_i, ref f_eq_m_i) = f_eq_pm[i];
+            let omega = (
                 (f_p_i - f_eq_p_i).scale(omega_p)
                     + (f_m_i - f_eq_m_i).scale(omega_m)
-            ).scale(-dt * 0.5));
+            ).scale(-dt * 0.5);
+            result.push((f[i].0.clone(), &f[i].1 + omega))
         }
-
-        println!(">> Collision step 3 took {} ms", timer3.elapsed().as_millis());
 
         result
     }
@@ -476,7 +471,7 @@ impl CollisionOperator<D2Q9> for KBC {
         lattice:        &D2Q9,
         equilibrium:    &Populations,
         discretization: &Discretization,
-    ) -> Vec<Matrix> {
+    ) -> Populations {
         let f    = lattice.populations();
         let f_eq = lattice.equilibrium(discretization);
 
@@ -523,7 +518,7 @@ impl CollisionOperator<D2Q9> for KBC {
                 ).hadamard(&rho).scale(0.125)
             };
 
-            let mut temp: Vec<Matrix> = Vec::new();
+            let mut temp: Vec<Matrix> = Vec::with_capacity(9);
             temp.push(delta_s_0.clone());
             temp.push(delta_s_1_3.clone());
             temp.push(delta_s_2_4.clone());
@@ -538,7 +533,8 @@ impl CollisionOperator<D2Q9> for KBC {
         };
 
         let delta_h = {
-            let mut temp: Vec<Matrix> = Vec::new();
+            let mut temp: Vec<Matrix>
+                = Vec::with_capacity(lattice.populations.len());
 
             for (((_, ref f_i), (_, ref f_eq_i)), delta_s_i)
                 in f.iter().zip(&f_eq).zip(&delta_s) {
@@ -568,17 +564,104 @@ impl CollisionOperator<D2Q9> for KBC {
                 .scale(-1.0)
         };
 
-        let mut omega = Vec::new();
+        let mut result = Vec::with_capacity(lattice.populations.len());
         for i in 0 .. lattice.populations.len() {
-            omega.push(delta_s[i].scale(2.0 * -beta)
-                       + delta_h[i].hadamard(&gamma_star).scale(-beta));
+            let omega
+                = delta_s[i].scale(2.0 * -beta)
+                + delta_h[i].hadamard(&gamma_star).scale(-beta);
+            result.push((f[i].0.clone(), &f[i].1 + omega));
         }
 
-        omega
+        // Check that the analytic solution is correct
+        let mut total = Matrix::new_filled(0.0, lattice.size());
+        for i in 0 .. lattice.populations().len() {
+            let foo = Matrix::new_filled(1.0, lattice.size()) - gamma_star.scale(beta);
+            let bar = (delta_h[i].hadamard(&foo) - delta_s[i].scale(2.0 * beta - 1.0)).divide(&f_eq[i].1).shift(1.0).log();
+            total += delta_h[i].hadamard(&bar);
+        }
+        println!("DEBUG: {}", total.abs().maximum_real());
+
+        result
     }
 
     fn kinematic_shear_viscosity(&self, disc: &Discretization) -> Scalar {
         self.ks_viscosity
+    }
+}
+
+// -----------------------------------------------------------------------------
+
+/// Based on "Lattice Boltzmann method with regularized pre-collision
+/// distribution functions" by Jonas Latt and Bastien Chopard.
+pub struct Regularized<C> {
+    underlying: C,
+}
+
+impl<C> Regularized<C> {
+    pub fn new(underlying: C) -> Self {
+        Regularized { underlying: underlying }
+    }
+}
+
+impl<L, C> CollisionOperator<L> for Regularized<C>
+where L: Lattice, C: CollisionOperator<L> {
+    fn evaluate(
+        &self,
+        lattice:        &L,
+        equilibrium:    &Populations,
+        discretization: &Discretization,
+    ) -> Populations {
+        let f = lattice.populations();
+        let f_eq = lattice.equilibrium(discretization);
+        let f_neq = lattice.non_equilibrium(discretization);
+        let cs = discretization.isothermal_speed_of_sound();
+        let cs2 = cs * cs;
+        let cs4 = cs2 * cs2;
+
+        let mut dev_stress_neq_xx = Matrix::new_filled(0.0, lattice.size());
+        let mut dev_stress_neq_xy = Matrix::new_filled(0.0, lattice.size());
+        let mut dev_stress_neq_yx = Matrix::new_filled(0.0, lattice.size());
+        let mut dev_stress_neq_yy = Matrix::new_filled(0.0, lattice.size());
+        for i in 0 .. lattice.populations().len() {
+            let (dir_i, f_neq_i) = &f_neq[i];
+            let c_i = dir_i.c_vector;
+            dev_stress_neq_xx += f_neq_i.scale(c_i.0 * c_i.0);
+            dev_stress_neq_xy += f_neq_i.scale(c_i.0 * c_i.1);
+            dev_stress_neq_yx += f_neq_i.scale(c_i.1 * c_i.0);
+            dev_stress_neq_yy += f_neq_i.scale(c_i.1 * c_i.1);
+        }
+
+        let mut q_tensor_xx = Vec::with_capacity(lattice.populations().len());
+        let mut q_tensor_xy = Vec::with_capacity(lattice.populations().len());
+        let mut q_tensor_yx = Vec::with_capacity(lattice.populations().len());
+        let mut q_tensor_yy = Vec::with_capacity(lattice.populations().len());
+        for i in 0 .. lattice.populations().len() {
+            let (dir_i, _) = &f[i];
+            let c_i = dir_i.c_vector;
+            q_tensor_xx.push(c_i.0 * c_i.0 - cs2);
+            q_tensor_xy.push(c_i.0 * c_i.1);
+            q_tensor_yx.push(c_i.1 * c_i.0);
+            q_tensor_yy.push(c_i.1 * c_i.1 - cs2);
+        }
+
+        let mut f_reg = Vec::with_capacity(lattice.populations().len());
+        for i in 0 .. lattice.populations().len() {
+            let (dir_i, _) = &f[i];
+            let w_i = dir_i.w_scalar;
+            let scale_factor = w_i / (2.0 * cs4);
+            let mut reg = f_eq[i].1.clone();
+            reg += dev_stress_neq_xx.scale(q_tensor_xx[i] * scale_factor);
+            reg += dev_stress_neq_xy.scale(q_tensor_xy[i] * scale_factor);
+            reg += dev_stress_neq_yx.scale(q_tensor_yx[i] * scale_factor);
+            reg += dev_stress_neq_yy.scale(q_tensor_yy[i] * scale_factor);
+            f_reg.push((dir_i.clone(), reg));
+        }
+
+        f_reg
+    }
+
+    fn kinematic_shear_viscosity(&self, disc: &Discretization) -> Scalar {
+        self.underlying.kinematic_shear_viscosity(disc)
     }
 }
 
@@ -647,19 +730,12 @@ impl<L: Lattice> State<L> {
 
     pub fn collide(&mut self) {
         use std::borrow::Borrow;
-        let omega = self.collision.evaluate(
+        let f_star = self.collision.evaluate(
             self.lattice.borrow(),
             &self.equilibrium(),
             &self.discretization,
         );
-        // af::eval_multiple(omega.iter().map(|m| m.get_array()).collect());
-        let mut result
-            = Vec::with_capacity(self.lattice.populations().len());
-        for (pair, omega_i) in self.lattice.populations().iter().zip(omega) {
-            let (dir, f_i) = pair;
-            result.push((dir.clone(), f_i + omega_i));
-        }
-        *(self.lattice.populations_mut()) = result;
+        *(self.lattice.populations_mut()) = f_star;
     }
 
     pub fn bounce_back(&mut self) {
@@ -671,6 +747,7 @@ impl<L: Lattice> State<L> {
                         pop.get_array());
         }
         *(self.lattice.populations_mut()) = sw_pops;
+
     }
 
     #[inline(always)]
@@ -723,12 +800,6 @@ impl<L: Lattice> State<L> {
     pub fn speed(&self) -> Matrix {
         self.lattice.speed()
     }
-
-    // FIXME: viscous stress tensor is defined as
-    //   σxx ≈ ((Δt / 2τ) - 1) · Σᵢ (c_{ix} c_{ix} fᵢ^neq)
-    //   σxy ≈ ((Δt / 2τ) - 1) · Σᵢ (c_{ix} c_{iy} fᵢ^neq)
-    //   σyx ≈ ((Δt / 2τ) - 1) · Σᵢ (c_{iy} c_{ix} fᵢ^neq)
-    //   σyy ≈ ((Δt / 2τ) - 1) · Σᵢ (c_{iy} c_{iy} fᵢ^neq)
 
     #[inline(always)]
     pub fn equilibrium(&self) -> Populations {

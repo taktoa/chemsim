@@ -21,6 +21,71 @@ pub fn render_geometry<D: Drawable>(geometry: &Geometry, buf: &mut D) {
 }
 
 pub fn render_scalar_field<D: Drawable>(field: &Matrix, buf: &mut D) {
+    let size = {
+        let dimensions = buf.dimensions();
+        (dimensions.0 as usize, dimensions.1 as usize)
+    };
+
+    assert_eq!(size, field.get_shape());
+
+    let hsv_array: af::Array<f32> = {
+        let hue: matrix::Matrix = {
+            matrix::Matrix::new_filled(0.0, size)
+        };
+
+        let sat: matrix::Matrix = {
+            matrix::Matrix::new_filled(1.0, size)
+        };
+
+        let val: matrix::Matrix = {
+            let avg = af::mean_all(field.get_array()).0;
+            let std = af::stdev_all(field.get_array()).0;
+            let shape = field.get_shape();
+            (field - Matrix::new_filled(avg as f32, shape))
+                .scale(1.0 / std as f32)
+                .logistic()
+        };
+
+        assert_eq!(size, hue.get_shape());
+        assert_eq!(size, sat.get_shape());
+        assert_eq!(size, val.get_shape());
+
+        af::join_many(2, vec![
+            hue.clamp(0.0, 1.0).get_array(),
+            sat.clamp(0.0, 1.0).get_array(),
+            val.clamp(0.0, 1.0).get_array(),
+        ])
+    };
+
+    let rgb_array: af::Array<f32> = af::hsv2rgb(&hsv_array);
+
+    let r_matrix = matrix::Matrix::unsafe_new(af::slice(&rgb_array, 0));
+    let g_matrix = matrix::Matrix::unsafe_new(af::slice(&rgb_array, 1));
+    let b_matrix = matrix::Matrix::unsafe_new(af::slice(&rgb_array, 2));
+
+    assert_eq!(size, r_matrix.get_shape());
+    assert_eq!(size, g_matrix.get_shape());
+    assert_eq!(size, b_matrix.get_shape());
+
+    {
+        let (w, h) = size;
+        let r_vec = r_matrix.get_underlying();
+        let g_vec = g_matrix.get_underlying();
+        let b_vec = b_matrix.get_underlying();
+        for x in 0 .. w {
+            for y in 0 .. h {
+                let r_raw = r_vec[(y * w) + x];
+                let g_raw = g_vec[(y * w) + x];
+                let b_raw = b_vec[(y * w) + x];
+                let color = RGB(
+                    (256.0 * r_raw).round().min(255.0).max(0.0) as u8,
+                    (256.0 * g_raw).round().min(255.0).max(0.0) as u8,
+                    (256.0 * b_raw).round().min(255.0).max(0.0) as u8,
+                );
+                buf.set_pixel(PixelPos(x as u32, y as u32), color);
+            }
+        }
+    }
 }
 
 pub fn render_vector_field<D: Drawable>(field: &(Matrix, Matrix), buf: &mut D) {
@@ -58,7 +123,7 @@ pub fn render_vector_field<D: Drawable>(field: &(Matrix, Matrix), buf: &mut D) {
         };
 
         let sat: matrix::Matrix = {
-            matrix::Matrix::new_filled(1.0, size)
+            matrix::Matrix::new_filled(0.8, size)
         };
 
         let val: matrix::Matrix = {

@@ -24,10 +24,13 @@ pkgs.stdenv.mkDerivation {
     pkgs.cmake
     # pkgs.openbabel
     pkgs.perl
+    pkgs.cudatoolkit
     # (import /nix/store/m5aygxcn0cvnvsk3i66r7b1d8sk2av39-cp2k-2018-07-25.drv)
   ];
 
   AF_PATH = pkgs.arrayfire;
+
+  FORGE_PATH = pkgs.forge;
 
   LIBCLANG_PATH = "${pkgs.llvmPackages_6.libclang.lib}/lib";
 
