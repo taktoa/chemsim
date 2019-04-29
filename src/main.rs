@@ -27,15 +27,7 @@ pub fn draw_matrix<D: Drawable>(
         for y in 0 .. h {
             let n = shader(copied[(y * w) + x]);
             let k = 2 * (n.abs().min(127) as u8);
-            let value = {
-                if n < 0 {
-                    RGB(k, 0, 0)
-                } else if n > 0 {
-                    RGB(0, k, 0)
-                } else {
-                    RGB(0, 0, 0)
-                }
-            };
+            let value = RGB((n < 0) as u8 * k, (n > 0) as u8 * k, 0);
             buffer.set_pixel(PixelPos(x as u32, y as u32), value);
         }
     }
@@ -91,9 +83,7 @@ impl chemsim::display::Simulation for LBMSim {
                         for b in 0 .. self.size.1 {
                             let diffX = i64::abs(a as i64 - x as i64);
                             let diffY = i64::abs(b as i64 - y as i64);
-                            if (diffX < 5) && (diffY < 5) {
-                                vec[(b * self.size.0) + a] = true;
-                            }
+                            vec[(b * self.size.0) + a] = (diffX < 5) && (diffY < 5);
                         }
                     }
                     self.state.geometry = af::Array::new(&vec[..], dims);
